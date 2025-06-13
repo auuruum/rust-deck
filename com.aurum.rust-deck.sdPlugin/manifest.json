@@ -24,6 +24,7 @@
 			"UUID": "com.aurum.rust-deck.time",
 			"Icon": "imgs/actions/time_dispay/icon",
 			"Tooltip": "Displays the current time from the server, updates every minute.",
+			"PropertyInspectorPath": "ui/time-display.html",
 			"Controllers": [
 				"Keypad"
 			],
