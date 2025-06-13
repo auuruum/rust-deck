@@ -34,6 +34,21 @@
 					"TitleAlignment": "middle"
 				}
 			]
+		},
+		{
+			"Name": "Server Info",
+			"UUID": "com.aurum.rust-deck.server-info",
+			"Icon": "imgs/actions/server_info/icon",
+			"Tooltip": "Displays server player count, updates every 30 seconds.",
+			"Controllers": [
+				"Keypad"
+			],
+			"States": [
+				{
+					"Image": "imgs/actions/server_info/key",
+					"TitleAlignment": "middle"
+				}
+			]
 		}
 	],
 	"Category": "Rust Deck",
