@@ -32,8 +32,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 titlePositionSelect.value = settings.titlePosition || 'top';
             }
 
-            // Handle custom title textfield
-            const customTitleField = document.querySelector('sdpi-textfield[setting="customTitle"]');
+            // Handle custom title textarea
+            const customTitleField = document.querySelector('sdpi-textarea[setting="customTitle"]');
             if (customTitleField) {
                 customTitleField.value = settings.customTitle || '';
             }
@@ -60,7 +60,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         // Listen for custom title changes
-        const customTitleField = document.querySelector('sdpi-textfield[setting="customTitle"]');
+        const customTitleField = document.querySelector('sdpi-textarea[setting="customTitle"]');
         if (customTitleField) {
             let debounceTimer;
             customTitleField.addEventListener('input', (event) => {
