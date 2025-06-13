@@ -11,6 +11,12 @@ document.addEventListener('DOMContentLoaded', function() {
             console.log('Property Inspector: Received settings', payload.settings);
             settings = payload.settings || {};
             
+            // Handle base URL field
+            const baseUrlField = document.querySelector('sdpi-textfield[setting="baseUrl"]');
+            if (baseUrlField) {
+                baseUrlField.value = settings.baseUrl || '';
+            }
+
             // Handle display format select
             const displayFormatSelect = document.querySelector('sdpi-select[setting="displayFormat"]');
             if (!displayFormatSelect) {
@@ -38,6 +44,23 @@ document.addEventListener('DOMContentLoaded', function() {
                 customTitleField.value = settings.customTitle || '';
             }
         });
+
+        // Listen for base URL changes
+        const baseUrlField = document.querySelector('sdpi-textfield[setting="baseUrl"]');
+        if (baseUrlField) {
+            let debounceTimer;
+            baseUrlField.addEventListener('input', (event) => {
+                // Clear any existing timer
+                clearTimeout(debounceTimer);
+                
+                // Set a new timer to update settings after user stops typing
+                debounceTimer = setTimeout(() => {
+                    const newSettings = { ...settings, baseUrl: event.target.value };
+                    console.log('Property Inspector: Sending settings', newSettings);
+                    streamDeckClient.setSettings(newSettings);
+                }, 300); // Wait 300ms after user stops typing
+            });
+        }
 
         // Listen for select changes
         const displayFormatSelect = document.querySelector('sdpi-select[setting="displayFormat"]');
