@@ -18,6 +18,21 @@
 					"TitleAlignment": "middle"
 				}
 			]
+		},
+		{
+			"Name": "Time Display",
+			"UUID": "com.aurum.rust-deck.time",
+			"Icon": "imgs/actions/time_dispay/icon",
+			"Tooltip": "Displays the current time from the server, updates every minute.",
+			"Controllers": [
+				"Keypad"
+			],
+			"States": [
+				{
+					"Image": "imgs/actions/time_dispay/key",
+					"TitleAlignment": "middle"
+				}
+			]
 		}
 	],
 	"Category": "Rust Deck",
@@ -43,5 +58,6 @@
 		"Version": "20",
 		"Debug": "enabled"
 	},
-	"UUID": "com.aurum.rust-deck"
+	"UUID": "com.aurum.rust-deck",
+	"PropertyInspectorPath": "ui/global-settings.html"
 }

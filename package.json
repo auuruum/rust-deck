@@ -17,6 +17,8 @@
         "typescript": "^5.2.2"
     },
     "dependencies": {
-        "@elgato/streamdeck": "^1.0.0"
+        "@elgato/streamdeck": "^1.0.0",
+        "@types/node-fetch": "^2.6.12",
+        "node-fetch": "^3.3.2"
     }
 }
