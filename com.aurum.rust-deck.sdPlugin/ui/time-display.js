@@ -26,6 +26,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
             displayFormatSelect.value = settings.displayFormat;
 
+            // Handle title position select
+            const titlePositionSelect = document.querySelector('sdpi-select[setting="titlePosition"]');
+            if (titlePositionSelect) {
+                titlePositionSelect.value = settings.titlePosition || 'top';
+            }
+
             // Handle custom title textfield
             const customTitleField = document.querySelector('sdpi-textfield[setting="customTitle"]');
             if (customTitleField) {
@@ -43,13 +49,30 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         }
 
+        // Listen for title position changes
+        const titlePositionSelect = document.querySelector('sdpi-select[setting="titlePosition"]');
+        if (titlePositionSelect) {
+            titlePositionSelect.addEventListener('change', (event) => {
+                const newSettings = { ...settings, titlePosition: event.target.value };
+                console.log('Property Inspector: Sending settings', newSettings);
+                streamDeckClient.setSettings(newSettings);
+            });
+        }
+
         // Listen for custom title changes
         const customTitleField = document.querySelector('sdpi-textfield[setting="customTitle"]');
         if (customTitleField) {
-            customTitleField.addEventListener('change', (event) => {
-                const newSettings = { ...settings, customTitle: event.target.value };
-                console.log('Property Inspector: Sending settings', newSettings);
-                streamDeckClient.setSettings(newSettings);
+            let debounceTimer;
+            customTitleField.addEventListener('input', (event) => {
+                // Clear any existing timer
+                clearTimeout(debounceTimer);
+                
+                // Set a new timer to update settings after user stops typing
+                debounceTimer = setTimeout(() => {
+                    const newSettings = { ...settings, customTitle: event.target.value };
+                    console.log('Property Inspector: Sending settings', newSettings);
+                    streamDeckClient.setSettings(newSettings);
+                }, 300); // Wait 300ms after user stops typing
             });
         }
     } catch (error) {
