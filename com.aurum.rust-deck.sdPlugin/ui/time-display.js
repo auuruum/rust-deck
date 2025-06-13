@@ -11,6 +11,7 @@ document.addEventListener('DOMContentLoaded', function() {
             console.log('Property Inspector: Received settings', payload.settings);
             settings = payload.settings || {};
             
+            // Handle display format select
             const displayFormatSelect = document.querySelector('sdpi-select[setting="displayFormat"]');
             if (!displayFormatSelect) {
                 console.error('Property Inspector: Could not find displayFormat select element');
@@ -24,7 +25,12 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             displayFormatSelect.value = settings.displayFormat;
-            console.log('Property Inspector: Set displayFormatSelect value to', displayFormatSelect.value);
+
+            // Handle custom title textfield
+            const customTitleField = document.querySelector('sdpi-textfield[setting="customTitle"]');
+            if (customTitleField) {
+                customTitleField.value = settings.customTitle || '';
+            }
         });
 
         // Listen for select changes
@@ -35,8 +41,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 console.log('Property Inspector: Sending settings', newSettings);
                 streamDeckClient.setSettings(newSettings);
             });
-        } else {
-            console.error('Property Inspector: Could not find displayFormat select element for event listener');
+        }
+
+        // Listen for custom title changes
+        const customTitleField = document.querySelector('sdpi-textfield[setting="customTitle"]');
+        if (customTitleField) {
+            customTitleField.addEventListener('change', (event) => {
+                const newSettings = { ...settings, customTitle: event.target.value };
+                console.log('Property Inspector: Sending settings', newSettings);
+                streamDeckClient.setSettings(newSettings);
+            });
         }
     } catch (error) {
         console.error('Property Inspector: Error initializing', error);

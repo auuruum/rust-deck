@@ -1,9 +1,11 @@
-import { action, KeyDownEvent, SingletonAction, WillAppearEvent, DidReceiveSettingsEvent } from "@elgato/streamdeck";
+import { action, KeyDownEvent, SingletonAction, WillAppearEvent, DidReceiveSettingsEvent, Target } from "@elgato/streamdeck";
 
 interface TimeSettings {
     baseUrl?: string;
     lastUpdate?: string;
     displayFormat?: string;
+    customTitle?: string;
+    titlePosition?: string;
     [key: string]: string | undefined;
 }
 
@@ -17,6 +19,7 @@ interface TimeResponse {
 
 const DEFAULT_BASE_URL = "http://localhost:8080";
 const DEFAULT_DISPLAY_FORMAT = "time";
+const DEFAULT_TITLE_POSITION = "top";
 
 @action({ UUID: "com.aurum.rust-deck.time" })
 export class TimeDisplay extends SingletonAction<TimeSettings> {
@@ -25,6 +28,10 @@ export class TimeDisplay extends SingletonAction<TimeSettings> {
         if (!currentSettings.displayFormat) {
             // If displayFormat is not set, set it to the default and save settings
             await ev.action.setSettings({ ...currentSettings, displayFormat: DEFAULT_DISPLAY_FORMAT });
+        }
+        if (!currentSettings.titlePosition) {
+            // If titlePosition is not set, set it to the default and save settings
+            await ev.action.setSettings({ ...currentSettings, titlePosition: DEFAULT_TITLE_POSITION });
         }
         console.log("Time display will appear with settings:", ev.payload.settings);
         await this.fetchTime(ev.action, ev.payload.settings);
@@ -45,8 +52,10 @@ export class TimeDisplay extends SingletonAction<TimeSettings> {
         try {
             const baseUrl = settings.baseUrl && settings.baseUrl.trim() !== "" ? settings.baseUrl : DEFAULT_BASE_URL;
             const displayFormat = settings.displayFormat || DEFAULT_DISPLAY_FORMAT;
+            const titlePosition = settings.titlePosition || DEFAULT_TITLE_POSITION;
             console.log("Using base URL:", baseUrl);
             console.log("Using display format:", displayFormat);
+            console.log("Using title position:", titlePosition);
             
             if (!baseUrl) {
                 console.error("Base URL not configured");
@@ -90,8 +99,15 @@ export class TimeDisplay extends SingletonAction<TimeSettings> {
                             displayText = data.time;
                     }
                     
-                    console.log("Setting title to:", displayText);
-                    await action.setTitle(displayText);
+                    // Combine custom title with display text based on position
+                    const finalDisplayText = settings.customTitle 
+                        ? titlePosition === "top"
+                            ? `${settings.customTitle}\n${displayText}`
+                            : `${displayText}\n${settings.customTitle}`
+                        : displayText;
+                    
+                    console.log("Setting title to:", finalDisplayText);
+                    await action.setTitle(finalDisplayText);
                     // Only update lastUpdate, do not overwrite displayFormat here if it was just set
                     await action.setSettings({ ...settings, lastUpdate: displayText });
                 } catch (parseError) {
