@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Server Info Settings</title>
+    <meta charset="utf-8" />
+    <script src="https://sdpi-components.dev/releases/v3/sdpi-components.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 16px;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+    </style>
+</head>
+<body>
+    <sdpi-item label="Server URL">
+        <sdpi-textfield setting="serverUrl" placeholder="Enter server URL (e.g. http://localhost:8080/info)"></sdpi-textfield>
+    </sdpi-item>
+    <sdpi-item label="Update Interval">
+        <sdpi-select setting="updateInterval" default="30">
+            <option value="5">5 seconds</option>
+            <option value="10">10 seconds</option>
+            <option value="15">15 seconds</option>
+            <option value="30">30 seconds</option>
+            <option value="60">1 minute</option>
+            <option value="120">2 minutes</option>
+            <option value="300">5 minutes</option>
+        </sdpi-select>
+    </sdpi-item>
+</body>
+</html> 
