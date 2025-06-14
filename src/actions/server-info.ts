@@ -1,4 +1,15 @@
-import { action, KeyDownEvent, SingletonAction } from "@elgato/streamdeck";
+import { 
+    action, 
+    KeyDownEvent, 
+    SingletonAction, 
+    WillAppearEvent, 
+    streamDeck, 
+    JsonObject,
+    WillDisappearEvent,
+    DidReceiveSettingsEvent,
+    Action
+} from "@elgato/streamdeck";
+import { GlobalSettings } from "../settings";
 
 export interface ServerInfoResponse {
     url: string;
@@ -11,47 +22,99 @@ export interface ServerInfoResponse {
     seed: number;
 }
 
-interface ServerInfoSettings {
-    serverUrl: string;
-    updateInterval: number;
+interface ServerInfoSettings extends JsonObject {
+    serverPath: string;
+    updateInterval: number | string;
+    [key: string]: string | number | boolean | null | undefined;
 }
+
+const DEFAULT_SERVER_PATH = "/info";
+const DEFAULT_UPDATE_INTERVAL = 30;
 
 @action({ UUID: "com.aurum.rust-deck.server-info" })
 export class ServerInfo extends SingletonAction {
-    private updateInterval: NodeJS.Timeout | null = null;
-    private currentAction: any = null;
     private settings: ServerInfoSettings = {
-        serverUrl: "http://localhost:8080/info",
-        updateInterval: 30
+        serverPath: DEFAULT_SERVER_PATH,
+        updateInterval: DEFAULT_UPDATE_INTERVAL,
+        // Add index signature properties
+        '': '',
+        '0': 0,
+        'false': false,
+        'null': null
     };
+    
+    private updateInterval: NodeJS.Timeout | null = null;
+    private currentAction: Action | null = null;
+    private globalSettings: GlobalSettings = { baseUrl: "http://localhost:8080" };
 
-    override onWillAppear(ev: any) {
+
+    constructor() {
+        super();
+        // Load initial global settings
+        this.loadGlobalSettings();
+        // Listen for global settings changes
+        streamDeck.settings.onDidReceiveGlobalSettings(({ settings }) => {
+            this.globalSettings = settings as GlobalSettings;
+            console.log('Global settings updated:', this.globalSettings);
+        });
+    }
+
+    private async loadGlobalSettings() {
+        try {
+            const settings = await streamDeck.settings.getGlobalSettings<GlobalSettings>();
+            if (settings) {
+                this.globalSettings = settings;
+                console.log('Loaded global settings:', this.globalSettings);
+            }
+        } catch (error) {
+            console.error('Failed to load global settings:', error);
+        }
+    }
+
+    override async onWillAppear(ev: WillAppearEvent<ServerInfoSettings>) {
         this.currentAction = ev.action;
+        const currentSettings = ev.payload.settings;
+        
+        // Initialize settings if not set
+        const newSettings = {
+            serverPath: currentSettings?.serverPath || DEFAULT_SERVER_PATH,
+            updateInterval: currentSettings?.updateInterval || DEFAULT_UPDATE_INTERVAL
+        };
+
+        // Save settings if they were updated
+        if (JSON.stringify(currentSettings) !== JSON.stringify(newSettings)) {
+            await this.currentAction.setSettings(newSettings);
+        }
+        
+        this.settings = newSettings;
         console.log("Server Info button appeared, starting updates...");
         // Start periodic updates when the button appears
         this.updateServerInfo();
         this.startUpdateInterval();
     }
 
-    override onWillDisappear() {
+    override onWillDisappear(ev: WillDisappearEvent) {
         console.log("Server Info button disappeared, stopping updates...");
         // Clean up interval when button disappears
         this.stopUpdateInterval();
     }
 
-    override onKeyDown(ev: KeyDownEvent) {
+    override onKeyDown(ev: KeyDownEvent<JsonObject>) {
         console.log("Server Info button pressed, updating immediately...");
         // Refresh data on button press
         this.updateServerInfo(ev.action);
     }
 
-    override onDidReceiveSettings(ev: any) {
+    override onDidReceiveSettings(ev: DidReceiveSettingsEvent<ServerInfoSettings>) {
         console.log("Settings received:", ev.payload.settings);
         this.settings = {
-            serverUrl: ev.payload.settings.serverUrl || "http://localhost:8080/info",
-            updateInterval: parseInt(ev.payload.settings.updateInterval) || 30
+            serverPath: ev.payload.settings.serverPath || DEFAULT_SERVER_PATH,
+            updateInterval: typeof ev.payload.settings.updateInterval === 'number' 
+                ? ev.payload.settings.updateInterval 
+                : parseInt(ev.payload.settings.updateInterval as string) || DEFAULT_UPDATE_INTERVAL
         };
         
+        console.log("Updated settings:", this.settings);
         // Restart the update interval with new settings
         this.stopUpdateInterval();
         this.startUpdateInterval();
@@ -59,10 +122,14 @@ export class ServerInfo extends SingletonAction {
 
     private startUpdateInterval() {
         console.log(`Starting update interval: ${this.settings.updateInterval} seconds`);
+        const intervalMs = (typeof this.settings.updateInterval === 'number' 
+            ? this.settings.updateInterval 
+            : parseInt(this.settings.updateInterval) || DEFAULT_UPDATE_INTERVAL) * 1000;
+            
         this.updateInterval = setInterval(() => {
             console.log("Interval update triggered...");
             this.updateServerInfo();
-        }, this.settings.updateInterval * 1000);
+        }, intervalMs);
     }
 
     private stopUpdateInterval() {
@@ -73,10 +140,21 @@ export class ServerInfo extends SingletonAction {
         }
     }
 
-    private async updateServerInfo(action = this.currentAction) {
+    private getServerUrl(): string {
+        const baseUrl = this.globalSettings?.baseUrl?.trim() || "http://localhost:8080";
+        const serverPath = this.settings.serverPath?.startsWith('/') 
+            ? this.settings.serverPath 
+            : `/${this.settings.serverPath}`;
+        return `${baseUrl}${serverPath}`.replace(/\/+$/, ''); // Remove trailing slashes
+    }
+
+    private async updateServerInfo(action: any = this.currentAction) {
+        if (!action) return;
+        
         try {
-            console.log(`Fetching server info from: ${this.settings.serverUrl}`);
-            const response = await fetch(this.settings.serverUrl);
+            const url = this.getServerUrl();
+            console.log(`Fetching server info from: ${url}`);
+            const response = await fetch(url);
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
@@ -89,11 +167,14 @@ export class ServerInfo extends SingletonAction {
                 title += `(${data.queued_players})`;
             }
             
-            // Update the button title
-            action.setTitle(title);
+            // Update the button title using the action's setTitle method
+            await action.setTitle(title);
         } catch (error) {
             console.error("Failed to fetch server info:", error);
-            action.setTitle("Error");
+            // Update the button title with error message
+            if (action) {
+                await action.setTitle("Error");
+            }
         }
     }
 }
