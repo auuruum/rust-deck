@@ -1,6 +1,5 @@
 import { LogLevel, streamDeck } from "@elgato/streamdeck";
 
-import { IncrementCounter } from "./actions/increment-counter";
 import { TimeDisplay } from "./actions/time-display";
 import { ServerInfo } from "./actions/server-info";
 import { initializeGlobalSettings } from "./settings";
@@ -13,8 +12,6 @@ initializeGlobalSettings().catch(error => {
     console.error("Failed to initialize global settings:", error);
 });
 
-// Register the increment action.
-streamDeck.actions.registerAction(new IncrementCounter());
 // Register the time display action
 streamDeck.actions.registerAction(new TimeDisplay());
 // Register the server info action
