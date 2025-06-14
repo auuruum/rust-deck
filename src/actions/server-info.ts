@@ -81,13 +81,19 @@ export class ServerInfo extends SingletonAction {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
             const data = await response.json() as ServerInfoResponse;
-            console.log(`Server info received: ${data.players}/${data.max_players} players`);
+            console.log(`Server info received: ${data.players}/${data.max_players} players, queue: ${data.queued_players}`);
             
-            // Update the button title with player count
-            action.setTitle(`${data.players}/${data.max_players}`);
+            // Create title with queue information if there are queued players
+            let title = `${data.players}/${data.max_players}`;
+            if (data.queued_players > 0) {
+                title += `(${data.queued_players})`;
+            }
+            
+            // Update the button title
+            action.setTitle(title);
         } catch (error) {
             console.error("Failed to fetch server info:", error);
             action.setTitle("Error");
         }
     }
-} 
+}
