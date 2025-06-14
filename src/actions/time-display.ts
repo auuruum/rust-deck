@@ -99,7 +99,9 @@ export class TimeDisplay extends SingletonAction<TimeSettings> {
                 return;
             }
 
-            const url = `${baseUrl}/time`;
+            // Ensure there's exactly one slash between baseUrl and the endpoint
+            const normalizedBaseUrl = baseUrl.replace(/\/+$/, '');
+            const url = `${normalizedBaseUrl}/time`;
             console.log("Fetching time from:", url);
             
             try {

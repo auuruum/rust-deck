@@ -141,11 +141,14 @@ export class ServerInfo extends SingletonAction {
     }
 
     private getServerUrl(): string {
-        const baseUrl = this.globalSettings?.baseUrl?.trim() || "http://localhost:8080";
+        // Remove any trailing slashes from the base URL
+        const baseUrl = (this.globalSettings?.baseUrl?.trim() || "http://localhost:8080").replace(/\/+$/, '');
+        // Ensure server path starts with a single slash
         const serverPath = this.settings.serverPath?.startsWith('/') 
             ? this.settings.serverPath 
             : `/${this.settings.serverPath}`;
-        return `${baseUrl}${serverPath}`.replace(/\/+$/, ''); // Remove trailing slashes
+        // Combine base URL and server path, ensuring there's exactly one slash between them
+        return `${baseUrl}${serverPath}`;
     }
 
     private async updateServerInfo(action: any = this.currentAction) {
