@@ -5,6 +5,7 @@
     <meta charset="utf-8" />
     <script src="https://sdpi-components.dev/releases/v3/sdpi-components.js"></script>
     <script src="time-display.js" defer></script>
+    <script src="global-settings.js" defer></script>
     <style>
         body {
             margin: 0;
@@ -34,8 +35,8 @@
             <option value="day_length">Day Length</option>
         </sdpi-select>
     </sdpi-item>
-    <sdpi-item label="Base URL">
-        <sdpi-textfield setting="baseUrl" placeholder="Enter base URL for API (e.g. http://localhost:8080)"></sdpi-textfield>
+    <sdpi-item label="Base URL (Global Setting)">
+        <sdpi-textfield setting="baseUrl" global placeholder="Enter base URL for API (e.g. http://localhost:8080)"></sdpi-textfield>
     </sdpi-item>
 </body>
-</html> 
+</html>
