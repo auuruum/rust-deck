@@ -1,4 +1,5 @@
-import { action, KeyDownEvent, SingletonAction, WillAppearEvent, DidReceiveSettingsEvent, Target } from "@elgato/streamdeck";
+import { action, KeyDownEvent, SingletonAction, WillAppearEvent, DidReceiveSettingsEvent, Target, streamDeck } from "@elgato/streamdeck";
+import { GlobalSettings } from "../settings";
 
 interface TimeSettings {
     baseUrl?: string;
@@ -23,15 +24,47 @@ const DEFAULT_TITLE_POSITION = "top";
 
 @action({ UUID: "com.aurum.rust-deck.time" })
 export class TimeDisplay extends SingletonAction<TimeSettings> {
+    private globalSettings: GlobalSettings = { baseUrl: DEFAULT_BASE_URL };
+
+    constructor() {
+        super();
+        // Load global settings when the plugin starts
+        this.loadGlobalSettings();
+        // Listen for global settings changes
+        streamDeck.settings.onDidReceiveGlobalSettings(({ settings }) => {
+            this.globalSettings = settings as GlobalSettings;
+            console.log('Global settings updated:', this.globalSettings);
+        });
+    }
+
+    private async loadGlobalSettings() {
+        try {
+            const settings = await streamDeck.settings.getGlobalSettings<GlobalSettings>();
+            if (settings) {
+                this.globalSettings = settings;
+                console.log('Loaded global settings:', this.globalSettings);
+            }
+        } catch (error) {
+            console.error('Failed to load global settings:', error);
+        }
+    }
+
     override async onWillAppear(ev: WillAppearEvent<TimeSettings>): Promise<void> {
         const currentSettings = ev.payload.settings;
+        let settingsChanged = false;
+        const newSettings = { ...currentSettings };
+
         if (!currentSettings.displayFormat) {
-            // If displayFormat is not set, set it to the default and save settings
-            await ev.action.setSettings({ ...currentSettings, displayFormat: DEFAULT_DISPLAY_FORMAT });
+            newSettings.displayFormat = DEFAULT_DISPLAY_FORMAT;
+            settingsChanged = true;
         }
         if (!currentSettings.titlePosition) {
-            // If titlePosition is not set, set it to the default and save settings
-            await ev.action.setSettings({ ...currentSettings, titlePosition: DEFAULT_TITLE_POSITION });
+            newSettings.titlePosition = DEFAULT_TITLE_POSITION;
+            settingsChanged = true;
+        }
+        
+        if (settingsChanged) {
+            await ev.action.setSettings(newSettings);
         }
         console.log("Time display will appear with settings:", ev.payload.settings);
         await this.fetchTime(ev.action, ev.payload.settings);
@@ -50,10 +83,13 @@ export class TimeDisplay extends SingletonAction<TimeSettings> {
 
     private async fetchTime(action: any, settings: TimeSettings): Promise<void> {
         try {
-            const baseUrl = settings.baseUrl && settings.baseUrl.trim() !== "" ? settings.baseUrl : DEFAULT_BASE_URL;
+            // Use global baseUrl if available, otherwise fall back to instance settings or default
+            const baseUrl = this.globalSettings?.baseUrl?.trim() || 
+                           (settings.baseUrl && settings.baseUrl.trim() ? settings.baseUrl.trim() : DEFAULT_BASE_URL);
+            
+            console.log('Using base URL:', baseUrl);
             const displayFormat = settings.displayFormat || DEFAULT_DISPLAY_FORMAT;
             const titlePosition = settings.titlePosition || DEFAULT_TITLE_POSITION;
-            console.log("Using base URL:", baseUrl);
             console.log("Using display format:", displayFormat);
             console.log("Using title position:", titlePosition);
             
