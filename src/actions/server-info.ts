@@ -197,12 +197,10 @@ export class ServerInfo extends SingletonAction {
                 throw new Error('Invalid response format');
             }
 
-            console.log(`Server info received: ${data.currentPlayers}/${data.maxPlayers} players, queue: ${data.queuedPlayers}`);
-
-            // Set the button title to show player counts
+            console.log(`Server info received: ${data.currentPlayers}/${data.maxPlayers} players, queue: ${data.queuedPlayers}`);            // Set the button title to show player counts            
             let title = `${data.currentPlayers}/${data.maxPlayers}`;
             if (data.queuedPlayers > 0) {
-                title += `(${data.queuedPlayers})`;
+                title = `${title}\n(${data.queuedPlayers})`;
             }
             
             if (this.currentAction) {
