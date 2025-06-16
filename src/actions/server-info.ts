@@ -116,7 +116,7 @@ export class ServerInfo extends SingletonAction {
     override onKeyDown(ev: KeyDownEvent<JsonObject>) {
         console.log("Server Info button pressed, updating immediately...");
         // Refresh data on button press
-        this.updateServerInfo(ev.action);
+        this.updateServerInfo();
     }
 
     override onDidReceiveSettings(ev: DidReceiveSettingsEvent<ServerInfoSettings>) {
