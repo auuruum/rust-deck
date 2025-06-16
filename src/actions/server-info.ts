@@ -12,23 +12,18 @@ import {
 import { GlobalSettings } from "../settings";
 
 export interface ServerInfoResponse {
-    url: string;
-    name: string;
-    map: string;
-    size: number;
-    players: number;
-    max_players: number;
-    queued_players: number;
-    seed: number;
+    currentPlayers: number;
+    maxPlayers: number;
+    queuedPlayers: number;
 }
 
 interface ServerInfoSettings extends JsonObject {
-    serverPath: string;
+    serverPath?: string;
     updateInterval: number | string;
     [key: string]: string | number | boolean | null | undefined;
 }
 
-const DEFAULT_SERVER_PATH = "/info";
+const DEFAULT_SERVER_PATH = "/pop";
 const DEFAULT_UPDATE_INTERVAL = 30;
 
 @action({ UUID: "com.aurum.rust-deck.server-info" })
@@ -73,21 +68,27 @@ export class ServerInfo extends SingletonAction {
 
     override async onWillAppear(ev: WillAppearEvent<ServerInfoSettings>) {
         this.currentAction = ev.action;
-        const currentSettings = ev.payload.settings;
+        const currentSettings = ev.payload.settings || {};
         
-        // Initialize settings if not set
+        // Always update settings to ensure correct path
         const newSettings = {
-            serverPath: currentSettings?.serverPath || DEFAULT_SERVER_PATH,
-            updateInterval: currentSettings?.updateInterval || DEFAULT_UPDATE_INTERVAL
+            ...currentSettings,
+            serverPath: DEFAULT_SERVER_PATH,
+            updateInterval: currentSettings.updateInterval || DEFAULT_UPDATE_INTERVAL
         };
 
-        // Save settings if they were updated
-        if (JSON.stringify(currentSettings) !== JSON.stringify(newSettings)) {
-            await this.currentAction.setSettings(newSettings);
+        // Save settings
+        if (this.currentAction) {
+            try {
+                await (this.currentAction as any).setSettings(newSettings);
+            } catch (error) {
+                console.error('Failed to set settings:', error);
+            }
         }
         
         this.settings = newSettings;
-        console.log("Server Info button appeared, starting updates...");
+        console.log("Server Info button appeared with settings:", this.settings);
+        
         // Start periodic updates when the button appears
         this.updateServerInfo();
         this.startUpdateInterval();
@@ -151,32 +152,60 @@ export class ServerInfo extends SingletonAction {
         return `${baseUrl}${serverPath}`;
     }
 
-    private async updateServerInfo(action: any = this.currentAction) {
-        if (!action) return;
-        
+    private async updateServerInfo() {
+        if (!this.currentAction) {
+            console.log('No action available to update');
+            return;
+        }
+
         try {
-            const url = this.getServerUrl();
-            console.log(`Fetching server info from: ${url}`);
+            const baseUrl = this.globalSettings?.baseUrl?.trim();
+            if (!baseUrl) {
+                throw new Error('Base URL not configured');
+            }
+            
+            const normalizedBaseUrl = baseUrl.replace(/\/+$/, '');
+            const path = this.settings.serverPath || DEFAULT_SERVER_PATH;
+            const url = `${normalizedBaseUrl}${path}`;
+            console.log('Fetching server info from:', url);
+
             const response = await fetch(url);
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
-            const data = await response.json() as ServerInfoResponse;
-            console.log(`Server info received: ${data.players}/${data.max_players} players, queue: ${data.queued_players}`);
+
+            const rawData = await response.json();
+            const data = rawData as ServerInfoResponse;
             
-            // Create title with queue information if there are queued players
-            let title = `${data.players}/${data.max_players}`;
-            if (data.queued_players > 0) {
-                title += `(${data.queued_players})`;
+            // Validate the response has the required fields
+            if (!('currentPlayers' in data) || !('maxPlayers' in data) || !('queuedPlayers' in data)) {
+                throw new Error('Invalid response format');
+            }
+
+            console.log(`Server info received: ${data.currentPlayers}/${data.maxPlayers} players, queue: ${data.queuedPlayers}`);
+
+            // Set the button title to show player counts
+            let title = `${data.currentPlayers}/${data.maxPlayers}`;
+            if (data.queuedPlayers > 0) {
+                title += `(${data.queuedPlayers})`;
             }
             
-            // Update the button title using the action's setTitle method
-            await action.setTitle(title);
+            if (this.currentAction) {
+                try {
+                    await (this.currentAction as any).setTitle(title);
+                } catch (error) {
+                    console.error('Failed to set title:', error);
+                    await (this.currentAction as any).setTitle("Error");
+                }
+            }
         } catch (error) {
-            console.error("Failed to fetch server info:", error);
-            // Update the button title with error message
-            if (action) {
-                await action.setTitle("Error");
+            console.error('Error updating server info:', error);
+            if (this.currentAction) {
+                try {
+                    await (this.currentAction as any).setTitle("Error");
+                } catch (setError) {
+                    console.error('Failed to set error title:', setError);
+                }
             }
         }
     }

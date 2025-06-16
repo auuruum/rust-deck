@@ -11,11 +11,16 @@ interface TimeSettings {
 }
 
 interface TimeResponse {
-    day_length: number;
-    sunrise: string;
-    sunset: string;
-    time: string;
-    raw_time: number;
+    currentTime: number;
+    currentTimeFormatted: string;
+    isDay: boolean;
+    timeTillChange: string;
+    sunrise: number;
+    sunriseFormatted: string;
+    sunset: number;
+    sunsetFormatted: string;
+    dayLengthMinutes: number;
+    timeScale: number;
 }
 
 const DEFAULT_BASE_URL = "http://localhost:8080";
@@ -122,19 +127,19 @@ export class TimeDisplay extends SingletonAction<TimeSettings> {
                     let displayText = "";
                     switch (displayFormat) {
                         case "time":
-                            displayText = data.time;
+                            displayText = data.currentTimeFormatted;
                             break;
                         case "sunrise":
-                            displayText = data.sunrise;
+                            displayText = data.sunriseFormatted;
                             break;
                         case "sunset":
-                            displayText = data.sunset;
+                            displayText = data.sunsetFormatted;
                             break;
                         case "day_length":
-                            displayText = `${data.day_length.toFixed(1)}m`;
+                            displayText = `${data.dayLengthMinutes.toFixed(1)}m`;
                             break;
                         default:
-                            displayText = data.time;
+                            displayText = data.currentTimeFormatted;
                     }
                     
                     // Combine custom title with display text based on position
@@ -162,4 +167,4 @@ export class TimeDisplay extends SingletonAction<TimeSettings> {
             await action.setTitle("Error");
         }
     }
-} 
+}
