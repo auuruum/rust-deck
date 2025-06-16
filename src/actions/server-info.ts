@@ -46,15 +46,22 @@ export class ServerInfo extends SingletonAction {
     constructor() {
         super();
         // Load initial global settings
-        this.loadGlobalSettings();
+        this.loadGlobalSettings().then(() => {
+            console.log('Global settings loaded in constructor:', this.globalSettings);
+        });
+        
         // Listen for global settings changes
         streamDeck.settings.onDidReceiveGlobalSettings(({ settings }) => {
             this.globalSettings = settings as GlobalSettings;
             console.log('Global settings updated:', this.globalSettings);
+            // Refresh display when global settings change
+            this.updateServerInfo();
         });
     }
 
-    private async loadGlobalSettings() {
+    private lastSettings: ServerInfoSettings | null = null;
+
+    private async loadGlobalSettings(): Promise<void> {
         try {
             const settings = await streamDeck.settings.getGlobalSettings<GlobalSettings>();
             if (settings) {
@@ -63,6 +70,14 @@ export class ServerInfo extends SingletonAction {
             }
         } catch (error) {
             console.error('Failed to load global settings:', error);
+        }
+    }
+
+    private async waitForGlobalSettings(): Promise<void> {
+        let attempts = 0;
+        while (!this.globalSettings?.baseUrl && attempts < 5) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            attempts++;
         }
     }
 
@@ -87,6 +102,11 @@ export class ServerInfo extends SingletonAction {
         }
         
         this.settings = newSettings;
+        this.lastSettings = newSettings;
+        
+        // Wait for global settings to be available
+        await this.waitForGlobalSettings();
+        
         console.log("Server Info button appeared with settings:", this.settings);
         
         // Start periodic updates when the button appears
@@ -122,20 +142,27 @@ export class ServerInfo extends SingletonAction {
     }
 
     private startUpdateInterval() {
-        console.log(`Starting update interval: ${this.settings.updateInterval} seconds`);
-        const intervalMs = (typeof this.settings.updateInterval === 'number' 
-            ? this.settings.updateInterval 
-            : parseInt(this.settings.updateInterval) || DEFAULT_UPDATE_INTERVAL) * 1000;
-            
+        // Clear any existing interval
+        this.stopUpdateInterval();
+        
+        // Get interval in milliseconds
+        const interval = parseInt(this.settings.updateInterval as string) * 1000;
+        if (isNaN(interval) || interval <= 0) {
+            console.error('Invalid update interval:', this.settings.updateInterval);
+            return;
+        }
+
+        // Fetch immediately, then start the interval
+        this.updateServerInfo();
+        
+        // Set up the new interval
         this.updateInterval = setInterval(() => {
-            console.log("Interval update triggered...");
             this.updateServerInfo();
-        }, intervalMs);
+        }, interval);
     }
 
     private stopUpdateInterval() {
         if (this.updateInterval) {
-            console.log("Stopping update interval");
             clearInterval(this.updateInterval);
             this.updateInterval = null;
         }

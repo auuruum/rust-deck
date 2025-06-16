@@ -1,4 +1,4 @@
-import { action, KeyDownEvent, SingletonAction, WillAppearEvent, DidReceiveSettingsEvent, Target, streamDeck } from "@elgato/streamdeck";
+import { action, KeyDownEvent, SingletonAction, WillAppearEvent, DidReceiveSettingsEvent, Target, streamDeck, WillDisappearEvent } from "@elgato/streamdeck";
 import { GlobalSettings } from "../settings";
 
 interface TimeSettings {
@@ -7,6 +7,7 @@ interface TimeSettings {
     displayFormat?: string;
     customTitle?: string;
     titlePosition?: string;
+    updateInterval?: string;
     [key: string]: string | undefined;
 }
 
@@ -30,19 +31,30 @@ const DEFAULT_TITLE_POSITION = "top";
 @action({ UUID: "com.aurum.rust-deck.time" })
 export class TimeDisplay extends SingletonAction<TimeSettings> {
     private globalSettings: GlobalSettings = { baseUrl: DEFAULT_BASE_URL };
+    private updateInterval: NodeJS.Timeout | null = null;
+    private currentAction: any = null;
 
     constructor() {
         super();
         // Load global settings when the plugin starts
-        this.loadGlobalSettings();
+        this.loadGlobalSettings().then(() => {
+            console.log('Global settings loaded in constructor:', this.globalSettings);
+        });
+        
         // Listen for global settings changes
         streamDeck.settings.onDidReceiveGlobalSettings(({ settings }) => {
             this.globalSettings = settings as GlobalSettings;
             console.log('Global settings updated:', this.globalSettings);
+            // Refresh display when global settings change
+            if (this.currentAction) {
+                this.fetchTime(this.currentAction, this.lastSettings);
+            }
         });
     }
 
-    private async loadGlobalSettings() {
+    private lastSettings: TimeSettings = {};
+    
+    private async loadGlobalSettings(): Promise<void> {
         try {
             const settings = await streamDeck.settings.getGlobalSettings<GlobalSettings>();
             if (settings) {
@@ -52,6 +64,47 @@ export class TimeDisplay extends SingletonAction<TimeSettings> {
         } catch (error) {
             console.error('Failed to load global settings:', error);
         }
+    }
+
+    private async waitForGlobalSettings(): Promise<void> {
+        let attempts = 0;
+        while (!this.globalSettings?.baseUrl && attempts < 5) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            attempts++;
+        }
+    }
+
+    private startUpdateInterval(action: any, settings: TimeSettings) {
+        // Clear any existing interval
+        this.stopUpdateInterval();
+        
+        // Get interval in milliseconds (default to 60 seconds)
+        const interval = parseInt(settings.updateInterval || "60") * 1000;
+        if (isNaN(interval) || interval <= 0) {
+            console.error('Invalid update interval:', settings.updateInterval);
+            return;
+        }
+
+        // Store the current action
+        this.currentAction = action;
+
+        // Fetch immediately
+        this.fetchTime(action, settings);
+        
+        // Set up the interval
+        this.updateInterval = setInterval(() => {
+            if (this.currentAction) {
+                this.fetchTime(this.currentAction, settings);
+            }
+        }, interval);
+    }
+
+    private stopUpdateInterval() {
+        if (this.updateInterval) {
+            clearInterval(this.updateInterval);
+            this.updateInterval = null;
+        }
+        this.currentAction = null;
     }
 
     override async onWillAppear(ev: WillAppearEvent<TimeSettings>): Promise<void> {
@@ -71,8 +124,19 @@ export class TimeDisplay extends SingletonAction<TimeSettings> {
         if (settingsChanged) {
             await ev.action.setSettings(newSettings);
         }
-        console.log("Time display will appear with settings:", ev.payload.settings);
-        await this.fetchTime(ev.action, ev.payload.settings);
+
+        this.lastSettings = newSettings;
+        
+        // Wait for global settings to be available
+        await this.waitForGlobalSettings();
+        
+        console.log("Time display will appear with settings:", newSettings);
+        this.startUpdateInterval(ev.action, newSettings);
+    }
+
+    override async onWillDisappear(ev: WillDisappearEvent<TimeSettings>): Promise<void> {
+        console.log("Time display will disappear");
+        this.stopUpdateInterval();
     }
 
     override async onKeyDown(ev: KeyDownEvent<TimeSettings>): Promise<void> {
