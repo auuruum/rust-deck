@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Phase of Day Settings</title>
+    <meta charset="utf-8" />
+    <script src="https://sdpi-components.dev/releases/v3/sdpi-components.js"></script>
+    <script src="global-settings.js" defer></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 16px;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+        sdpi-textarea {
+            min-height: 60px;
+        }
+    </style>
+</head>
+<body>
+    <sdpi-item label="Custom Title">
+        <sdpi-textarea setting="customTitle" placeholder="Enter title to display on button (supports multiple lines)"></sdpi-textarea>
+    </sdpi-item>
+    <sdpi-item label="Title Position">
+        <sdpi-select setting="titlePosition" default="top">
+            <option value="top">Top</option>
+            <option value="bottom">Bottom</option>
+        </sdpi-select>
+    </sdpi-item>
+    <sdpi-item label="Update Interval (seconds)">
+        <sdpi-textfield setting="updateInterval" default="30" placeholder="Enter update interval in seconds (e.g. 30)"></sdpi-textfield>
+    </sdpi-item>
+    <sdpi-item label="Base URL (Global Setting)">
+        <sdpi-textfield setting="baseUrl" global placeholder="Enter base URL for API (e.g. http://localhost:8080)"></sdpi-textfield>
+    </sdpi-item>
+</body>
+</html>
