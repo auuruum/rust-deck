@@ -14,16 +14,8 @@
     </style>
 </head>
 <body>
-    <sdpi-item label="Update Interval">
-        <sdpi-select setting="updateInterval" default="30">
-            <option value="5">5 seconds</option>
-            <option value="10">10 seconds</option>
-            <option value="15">15 seconds</option>
-            <option value="30">30 seconds</option>
-            <option value="60">1 minute</option>
-            <option value="120">2 minutes</option>
-            <option value="300">5 minutes</option>
-        </sdpi-select>
+    <sdpi-item label="Update Interval (seconds)">
+        <sdpi-textfield setting="updateInterval" default="30" placeholder="Enter update interval in seconds (e.g. 30)"></sdpi-textfield>
     </sdpi-item>
     <sdpi-item label="Base URL (Global Setting)">
         <sdpi-textfield setting="baseUrl" global placeholder="Enter base URL for API (e.g. http://localhost:8080)"></sdpi-textfield>

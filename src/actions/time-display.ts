@@ -27,12 +27,14 @@ interface TimeResponse {
 const DEFAULT_BASE_URL = "http://localhost:8080";
 const DEFAULT_DISPLAY_FORMAT = "time";
 const DEFAULT_TITLE_POSITION = "top";
+const DEFAULT_UPDATE_INTERVAL = "60";
 
 @action({ UUID: "com.aurum.rust-deck.time" })
 export class TimeDisplay extends SingletonAction<TimeSettings> {
     private globalSettings: GlobalSettings = { baseUrl: DEFAULT_BASE_URL };
     private updateInterval: NodeJS.Timeout | null = null;
     private currentAction: any = null;
+    private lastSettings: TimeSettings = {};
 
     constructor() {
         super();
@@ -52,8 +54,6 @@ export class TimeDisplay extends SingletonAction<TimeSettings> {
         });
     }
 
-    private lastSettings: TimeSettings = {};
-    
     private async loadGlobalSettings(): Promise<void> {
         try {
             const settings = await streamDeck.settings.getGlobalSettings<GlobalSettings>();
@@ -79,14 +79,17 @@ export class TimeDisplay extends SingletonAction<TimeSettings> {
         this.stopUpdateInterval();
         
         // Get interval in milliseconds (default to 60 seconds)
-        const interval = parseInt(settings.updateInterval || "60") * 1000;
+        const interval = parseInt(settings.updateInterval || DEFAULT_UPDATE_INTERVAL) * 1000;
         if (isNaN(interval) || interval <= 0) {
             console.error('Invalid update interval:', settings.updateInterval);
             return;
         }
 
-        // Store the current action
+        console.log(`Starting update interval for time display: ${interval}ms`);
+
+        // Store the current action and settings
         this.currentAction = action;
+        this.lastSettings = settings;
 
         // Fetch immediately
         this.fetchTime(action, settings);
@@ -120,13 +123,15 @@ export class TimeDisplay extends SingletonAction<TimeSettings> {
             newSettings.titlePosition = DEFAULT_TITLE_POSITION;
             settingsChanged = true;
         }
+        if (!currentSettings.updateInterval) {
+            newSettings.updateInterval = DEFAULT_UPDATE_INTERVAL;
+            settingsChanged = true;
+        }
         
         if (settingsChanged) {
             await ev.action.setSettings(newSettings);
         }
 
-        this.lastSettings = newSettings;
-        
         // Wait for global settings to be available
         await this.waitForGlobalSettings();
         
@@ -146,8 +151,8 @@ export class TimeDisplay extends SingletonAction<TimeSettings> {
 
     override onDidReceiveSettings(ev: DidReceiveSettingsEvent<TimeSettings>): void {
         console.log("Time display did receive settings:", ev.payload.settings);
-        // The `fetchTime` call below uses the latest settings from `ev.payload.settings`
-        this.fetchTime(ev.action, ev.payload.settings);
+        // Restart the update interval with new settings
+        this.startUpdateInterval(ev.action, ev.payload.settings);
     }
 
     private async fetchTime(action: any, settings: TimeSettings): Promise<void> {

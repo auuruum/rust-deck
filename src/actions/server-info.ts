@@ -19,28 +19,24 @@ export interface ServerInfoResponse {
 
 interface ServerInfoSettings extends JsonObject {
     serverPath?: string;
-    updateInterval: number | string;
+    updateInterval?: string;
     [key: string]: string | number | boolean | null | undefined;
 }
 
 const DEFAULT_SERVER_PATH = "/pop";
-const DEFAULT_UPDATE_INTERVAL = 30;
+const DEFAULT_UPDATE_INTERVAL = "30";
 
 @action({ UUID: "com.aurum.rust-deck.server-info" })
 export class ServerInfo extends SingletonAction {
     private settings: ServerInfoSettings = {
         serverPath: DEFAULT_SERVER_PATH,
-        updateInterval: DEFAULT_UPDATE_INTERVAL,
-        // Add index signature properties
-        '': '',
-        '0': 0,
-        'false': false,
-        'null': null
+        updateInterval: DEFAULT_UPDATE_INTERVAL
     };
     
     private updateInterval: NodeJS.Timeout | null = null;
     private currentAction: Action | null = null;
     private globalSettings: GlobalSettings = { baseUrl: "http://localhost:8080" };
+    private lastSettings: ServerInfoSettings | null = null;
 
 
     constructor() {
@@ -58,8 +54,6 @@ export class ServerInfo extends SingletonAction {
             this.updateServerInfo();
         });
     }
-
-    private lastSettings: ServerInfoSettings | null = null;
 
     private async loadGlobalSettings(): Promise<void> {
         try {
@@ -85,10 +79,10 @@ export class ServerInfo extends SingletonAction {
         this.currentAction = ev.action;
         const currentSettings = ev.payload.settings || {};
         
-        // Always update settings to ensure correct path
+        // Always update settings to ensure defaults
         const newSettings = {
             ...currentSettings,
-            serverPath: DEFAULT_SERVER_PATH,
+            serverPath: currentSettings.serverPath || DEFAULT_SERVER_PATH,
             updateInterval: currentSettings.updateInterval || DEFAULT_UPDATE_INTERVAL
         };
 
@@ -109,8 +103,7 @@ export class ServerInfo extends SingletonAction {
         
         console.log("Server Info button appeared with settings:", this.settings);
         
-        // Start periodic updates when the button appears
-        this.updateServerInfo();
+        // Start periodic updates
         this.startUpdateInterval();
     }
 
@@ -128,16 +121,9 @@ export class ServerInfo extends SingletonAction {
 
     override onDidReceiveSettings(ev: DidReceiveSettingsEvent<ServerInfoSettings>) {
         console.log("Settings received:", ev.payload.settings);
-        this.settings = {
-            serverPath: ev.payload.settings.serverPath || DEFAULT_SERVER_PATH,
-            updateInterval: typeof ev.payload.settings.updateInterval === 'number' 
-                ? ev.payload.settings.updateInterval 
-                : parseInt(ev.payload.settings.updateInterval as string) || DEFAULT_UPDATE_INTERVAL
-        };
-        
-        console.log("Updated settings:", this.settings);
+        this.settings = ev.payload.settings;
+        this.lastSettings = ev.payload.settings;
         // Restart the update interval with new settings
-        this.stopUpdateInterval();
         this.startUpdateInterval();
     }
 
@@ -146,13 +132,15 @@ export class ServerInfo extends SingletonAction {
         this.stopUpdateInterval();
         
         // Get interval in milliseconds
-        const interval = parseInt(this.settings.updateInterval as string) * 1000;
+        const interval = parseInt(this.settings.updateInterval || DEFAULT_UPDATE_INTERVAL) * 1000;
         if (isNaN(interval) || interval <= 0) {
             console.error('Invalid update interval:', this.settings.updateInterval);
             return;
         }
 
-        // Fetch immediately, then start the interval
+        console.log(`Starting update interval for server info: ${interval}ms`);
+
+        // Fetch immediately
         this.updateServerInfo();
         
         // Set up the new interval
