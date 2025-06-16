@@ -171,7 +171,7 @@ export class PhaseOfDay extends SingletonAction<PhaseSettings> {
                 try {
                     const data = JSON.parse(text) as TimeResponse;
                     console.log("Parsed time data:", data);
-                      const phaseText = data.timeTillChange === null ? "Wait" : `${data.isDay ? "🌙" : "☀️"}${data.timeTillChange}`;
+                    const phaseText = data.timeTillChange === null ? "Wait" : `${data.timeTillChange}\n${data.isDay ? "🌙" : "☀️"}`;
                     
                     // Combine custom title with phase text based on position
                     const finalDisplayText = settings.customTitle 
