@@ -34,6 +34,22 @@
 					"TitleAlignment": "middle"
 				}
 			]
+		},
+		{
+			"Name": "Phase of Day",
+			"UUID": "com.aurum.rust-deck.phase-of-day",
+			"Icon": "imgs/actions/phase_of_day/icon",
+			"Tooltip": "Displays time until next day/night phase change.",
+			"PropertyInspectorPath": "ui/phase-of-day.html",
+			"Controllers": [
+				"Keypad"
+			],
+			"States": [
+				{
+					"Image": "imgs/actions/phase_of_day/key",
+					"TitleAlignment": "middle"
+				}
+			]
 		}
 	],
 	"Category": "Rust Deck",

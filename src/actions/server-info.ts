@@ -12,54 +12,50 @@ import {
 import { GlobalSettings } from "../settings";
 
 export interface ServerInfoResponse {
-    url: string;
-    name: string;
-    map: string;
-    size: number;
-    players: number;
-    max_players: number;
-    queued_players: number;
-    seed: number;
+    currentPlayers: number;
+    maxPlayers: number;
+    queuedPlayers: number;
 }
 
 interface ServerInfoSettings extends JsonObject {
-    serverPath: string;
-    updateInterval: number | string;
+    serverPath?: string;
+    updateInterval?: string;
     [key: string]: string | number | boolean | null | undefined;
 }
 
-const DEFAULT_SERVER_PATH = "/info";
-const DEFAULT_UPDATE_INTERVAL = 30;
+const DEFAULT_SERVER_PATH = "/pop";
+const DEFAULT_UPDATE_INTERVAL = "30";
 
 @action({ UUID: "com.aurum.rust-deck.server-info" })
 export class ServerInfo extends SingletonAction {
     private settings: ServerInfoSettings = {
         serverPath: DEFAULT_SERVER_PATH,
-        updateInterval: DEFAULT_UPDATE_INTERVAL,
-        // Add index signature properties
-        '': '',
-        '0': 0,
-        'false': false,
-        'null': null
+        updateInterval: DEFAULT_UPDATE_INTERVAL
     };
     
     private updateInterval: NodeJS.Timeout | null = null;
     private currentAction: Action | null = null;
     private globalSettings: GlobalSettings = { baseUrl: "http://localhost:8080" };
+    private lastSettings: ServerInfoSettings | null = null;
 
 
     constructor() {
         super();
         // Load initial global settings
-        this.loadGlobalSettings();
+        this.loadGlobalSettings().then(() => {
+            console.log('Global settings loaded in constructor:', this.globalSettings);
+        });
+        
         // Listen for global settings changes
         streamDeck.settings.onDidReceiveGlobalSettings(({ settings }) => {
             this.globalSettings = settings as GlobalSettings;
             console.log('Global settings updated:', this.globalSettings);
+            // Refresh display when global settings change
+            this.updateServerInfo();
         });
     }
 
-    private async loadGlobalSettings() {
+    private async loadGlobalSettings(): Promise<void> {
         try {
             const settings = await streamDeck.settings.getGlobalSettings<GlobalSettings>();
             if (settings) {
@@ -71,25 +67,43 @@ export class ServerInfo extends SingletonAction {
         }
     }
 
+    private async waitForGlobalSettings(): Promise<void> {
+        let attempts = 0;
+        while (!this.globalSettings?.baseUrl && attempts < 5) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            attempts++;
+        }
+    }
+
     override async onWillAppear(ev: WillAppearEvent<ServerInfoSettings>) {
         this.currentAction = ev.action;
-        const currentSettings = ev.payload.settings;
+        const currentSettings = ev.payload.settings || {};
         
-        // Initialize settings if not set
+        // Always update settings to ensure defaults
         const newSettings = {
-            serverPath: currentSettings?.serverPath || DEFAULT_SERVER_PATH,
-            updateInterval: currentSettings?.updateInterval || DEFAULT_UPDATE_INTERVAL
+            ...currentSettings,
+            serverPath: currentSettings.serverPath || DEFAULT_SERVER_PATH,
+            updateInterval: currentSettings.updateInterval || DEFAULT_UPDATE_INTERVAL
         };
 
-        // Save settings if they were updated
-        if (JSON.stringify(currentSettings) !== JSON.stringify(newSettings)) {
-            await this.currentAction.setSettings(newSettings);
+        // Save settings
+        if (this.currentAction) {
+            try {
+                await (this.currentAction as any).setSettings(newSettings);
+            } catch (error) {
+                console.error('Failed to set settings:', error);
+            }
         }
         
         this.settings = newSettings;
-        console.log("Server Info button appeared, starting updates...");
-        // Start periodic updates when the button appears
-        this.updateServerInfo();
+        this.lastSettings = newSettings;
+        
+        // Wait for global settings to be available
+        await this.waitForGlobalSettings();
+        
+        console.log("Server Info button appeared with settings:", this.settings);
+        
+        // Start periodic updates
         this.startUpdateInterval();
     }
 
@@ -102,39 +116,41 @@ export class ServerInfo extends SingletonAction {
     override onKeyDown(ev: KeyDownEvent<JsonObject>) {
         console.log("Server Info button pressed, updating immediately...");
         // Refresh data on button press
-        this.updateServerInfo(ev.action);
+        this.updateServerInfo();
     }
 
     override onDidReceiveSettings(ev: DidReceiveSettingsEvent<ServerInfoSettings>) {
         console.log("Settings received:", ev.payload.settings);
-        this.settings = {
-            serverPath: ev.payload.settings.serverPath || DEFAULT_SERVER_PATH,
-            updateInterval: typeof ev.payload.settings.updateInterval === 'number' 
-                ? ev.payload.settings.updateInterval 
-                : parseInt(ev.payload.settings.updateInterval as string) || DEFAULT_UPDATE_INTERVAL
-        };
-        
-        console.log("Updated settings:", this.settings);
+        this.settings = ev.payload.settings;
+        this.lastSettings = ev.payload.settings;
         // Restart the update interval with new settings
-        this.stopUpdateInterval();
         this.startUpdateInterval();
     }
 
     private startUpdateInterval() {
-        console.log(`Starting update interval: ${this.settings.updateInterval} seconds`);
-        const intervalMs = (typeof this.settings.updateInterval === 'number' 
-            ? this.settings.updateInterval 
-            : parseInt(this.settings.updateInterval) || DEFAULT_UPDATE_INTERVAL) * 1000;
-            
+        // Clear any existing interval
+        this.stopUpdateInterval();
+        
+        // Get interval in milliseconds
+        const interval = parseInt(this.settings.updateInterval || DEFAULT_UPDATE_INTERVAL) * 1000;
+        if (isNaN(interval) || interval <= 0) {
+            console.error('Invalid update interval:', this.settings.updateInterval);
+            return;
+        }
+
+        console.log(`Starting update interval for server info: ${interval}ms`);
+
+        // Fetch immediately
+        this.updateServerInfo();
+        
+        // Set up the new interval
         this.updateInterval = setInterval(() => {
-            console.log("Interval update triggered...");
             this.updateServerInfo();
-        }, intervalMs);
+        }, interval);
     }
 
     private stopUpdateInterval() {
         if (this.updateInterval) {
-            console.log("Stopping update interval");
             clearInterval(this.updateInterval);
             this.updateInterval = null;
         }
@@ -151,32 +167,58 @@ export class ServerInfo extends SingletonAction {
         return `${baseUrl}${serverPath}`;
     }
 
-    private async updateServerInfo(action: any = this.currentAction) {
-        if (!action) return;
-        
+    private async updateServerInfo() {
+        if (!this.currentAction) {
+            console.log('No action available to update');
+            return;
+        }
+
         try {
-            const url = this.getServerUrl();
-            console.log(`Fetching server info from: ${url}`);
+            const baseUrl = this.globalSettings?.baseUrl?.trim();
+            if (!baseUrl) {
+                throw new Error('Base URL not configured');
+            }
+            
+            const normalizedBaseUrl = baseUrl.replace(/\/+$/, '');
+            const path = this.settings.serverPath || DEFAULT_SERVER_PATH;
+            const url = `${normalizedBaseUrl}${path}`;
+            console.log('Fetching server info from:', url);
+
             const response = await fetch(url);
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
-            const data = await response.json() as ServerInfoResponse;
-            console.log(`Server info received: ${data.players}/${data.max_players} players, queue: ${data.queued_players}`);
+
+            const rawData = await response.json();
+            const data = rawData as ServerInfoResponse;
             
-            // Create title with queue information if there are queued players
-            let title = `${data.players}/${data.max_players}`;
-            if (data.queued_players > 0) {
-                title += `(${data.queued_players})`;
+            // Validate the response has the required fields
+            if (!('currentPlayers' in data) || !('maxPlayers' in data) || !('queuedPlayers' in data)) {
+                throw new Error('Invalid response format');
+            }
+
+            console.log(`Server info received: ${data.currentPlayers}/${data.maxPlayers} players, queue: ${data.queuedPlayers}`);            // Set the button title to show player counts            
+            let title = `${data.currentPlayers}/${data.maxPlayers}`;
+            if (data.queuedPlayers > 0) {
+                title = `${title}\n(${data.queuedPlayers})`;
             }
             
-            // Update the button title using the action's setTitle method
-            await action.setTitle(title);
+            if (this.currentAction) {
+                try {
+                    await (this.currentAction as any).setTitle(title);
+                } catch (error) {
+                    console.error('Failed to set title:', error);
+                    await (this.currentAction as any).setTitle("Error");
+                }
+            }
         } catch (error) {
-            console.error("Failed to fetch server info:", error);
-            // Update the button title with error message
-            if (action) {
-                await action.setTitle("Error");
+            console.error('Error updating server info:', error);
+            if (this.currentAction) {
+                try {
+                    await (this.currentAction as any).setTitle("Error");
+                } catch (setError) {
+                    console.error('Failed to set error title:', setError);
+                }
             }
         }
     }

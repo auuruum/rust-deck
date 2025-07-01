@@ -1,10 +1,9 @@
-import { action, KeyDownEvent, SingletonAction, WillAppearEvent, DidReceiveSettingsEvent, Target, streamDeck, WillDisappearEvent } from "@elgato/streamdeck";
+import { action, KeyDownEvent, SingletonAction, WillAppearEvent, DidReceiveSettingsEvent, streamDeck, WillDisappearEvent } from "@elgato/streamdeck";
 import { GlobalSettings } from "../settings";
 
-interface TimeSettings {
+interface PhaseSettings {
     baseUrl?: string;
     lastUpdate?: string;
-    displayFormat?: string;
     customTitle?: string;
     titlePosition?: string;
     updateInterval?: string;
@@ -25,31 +24,27 @@ interface TimeResponse {
 }
 
 const DEFAULT_BASE_URL = "http://localhost:8080";
-const DEFAULT_DISPLAY_FORMAT = "time";
 const DEFAULT_TITLE_POSITION = "top";
-const DEFAULT_UPDATE_INTERVAL = "60";
+const DEFAULT_UPDATE_INTERVAL = "30";
 
-@action({ UUID: "com.aurum.rust-deck.time" })
-export class TimeDisplay extends SingletonAction<TimeSettings> {
+@action({ UUID: "com.aurum.rust-deck.phase-of-day" })
+export class PhaseOfDay extends SingletonAction<PhaseSettings> {
     private globalSettings: GlobalSettings = { baseUrl: DEFAULT_BASE_URL };
     private updateInterval: NodeJS.Timeout | null = null;
     private currentAction: any = null;
-    private lastSettings: TimeSettings = {};
+    private lastSettings: PhaseSettings = {};
 
     constructor() {
         super();
-        // Load global settings when the plugin starts
         this.loadGlobalSettings().then(() => {
             console.log('Global settings loaded in constructor:', this.globalSettings);
         });
         
-        // Listen for global settings changes
         streamDeck.settings.onDidReceiveGlobalSettings(({ settings }) => {
             this.globalSettings = settings as GlobalSettings;
             console.log('Global settings updated:', this.globalSettings);
-            // Refresh display when global settings change
             if (this.currentAction) {
-                this.fetchTime(this.currentAction, this.lastSettings);
+                this.fetchPhase(this.currentAction, this.lastSettings);
             }
         });
     }
@@ -74,30 +69,25 @@ export class TimeDisplay extends SingletonAction<TimeSettings> {
         }
     }
 
-    private startUpdateInterval(action: any, settings: TimeSettings) {
-        // Clear any existing interval
+    private startUpdateInterval(action: any, settings: PhaseSettings) {
         this.stopUpdateInterval();
         
-        // Get interval in milliseconds (default to 60 seconds)
         const interval = parseInt(settings.updateInterval || DEFAULT_UPDATE_INTERVAL) * 1000;
         if (isNaN(interval) || interval <= 0) {
             console.error('Invalid update interval:', settings.updateInterval);
             return;
         }
 
-        console.log(`Starting update interval for time display: ${interval}ms`);
+        console.log(`Starting update interval for phase display: ${interval}ms`);
 
-        // Store the current action and settings
         this.currentAction = action;
         this.lastSettings = settings;
 
-        // Fetch immediately
-        this.fetchTime(action, settings);
+        this.fetchPhase(action, settings);
         
-        // Set up the interval
         this.updateInterval = setInterval(() => {
             if (this.currentAction) {
-                this.fetchTime(this.currentAction, settings);
+                this.fetchPhase(this.currentAction, settings);
             }
         }, interval);
     }
@@ -110,15 +100,11 @@ export class TimeDisplay extends SingletonAction<TimeSettings> {
         this.currentAction = null;
     }
 
-    override async onWillAppear(ev: WillAppearEvent<TimeSettings>): Promise<void> {
+    override async onWillAppear(ev: WillAppearEvent<PhaseSettings>): Promise<void> {
         const currentSettings = ev.payload.settings;
         let settingsChanged = false;
         const newSettings = { ...currentSettings };
 
-        if (!currentSettings.displayFormat) {
-            newSettings.displayFormat = DEFAULT_DISPLAY_FORMAT;
-            settingsChanged = true;
-        }
         if (!currentSettings.titlePosition) {
             newSettings.titlePosition = DEFAULT_TITLE_POSITION;
             settingsChanged = true;
@@ -132,40 +118,34 @@ export class TimeDisplay extends SingletonAction<TimeSettings> {
             await ev.action.setSettings(newSettings);
         }
 
-        // Wait for global settings to be available
         await this.waitForGlobalSettings();
         
-        console.log("Time display will appear with settings:", newSettings);
+        console.log("Phase display will appear with settings:", newSettings);
         this.startUpdateInterval(ev.action, newSettings);
     }
 
-    override async onWillDisappear(ev: WillDisappearEvent<TimeSettings>): Promise<void> {
-        console.log("Time display will disappear");
+    override async onWillDisappear(ev: WillDisappearEvent<PhaseSettings>): Promise<void> {
+        console.log("Phase display will disappear");
         this.stopUpdateInterval();
     }
 
-    override async onKeyDown(ev: KeyDownEvent<TimeSettings>): Promise<void> {
-        console.log("Time display key down with settings:", ev.payload.settings);
-        await this.fetchTime(ev.action, ev.payload.settings);
+    override async onKeyDown(ev: KeyDownEvent<PhaseSettings>): Promise<void> {
+        console.log("Phase display key down with settings:", ev.payload.settings);
+        await this.fetchPhase(ev.action, ev.payload.settings);
     }
 
-    override onDidReceiveSettings(ev: DidReceiveSettingsEvent<TimeSettings>): void {
-        console.log("Time display did receive settings:", ev.payload.settings);
-        // Restart the update interval with new settings
+    override onDidReceiveSettings(ev: DidReceiveSettingsEvent<PhaseSettings>): void {
+        console.log("Phase display did receive settings:", ev.payload.settings);
         this.startUpdateInterval(ev.action, ev.payload.settings);
     }
 
-    private async fetchTime(action: any, settings: TimeSettings): Promise<void> {
+    private async fetchPhase(action: any, settings: PhaseSettings): Promise<void> {
         try {
-            // Use global baseUrl if available, otherwise fall back to instance settings or default
             const baseUrl = this.globalSettings?.baseUrl?.trim() || 
                            (settings.baseUrl && settings.baseUrl.trim() ? settings.baseUrl.trim() : DEFAULT_BASE_URL);
             
-            console.log('Using base URL:', baseUrl);
-            const displayFormat = settings.displayFormat || DEFAULT_DISPLAY_FORMAT;
             const titlePosition = settings.titlePosition || DEFAULT_TITLE_POSITION;
-            console.log("Using display format:", displayFormat);
-            console.log("Using title position:", titlePosition);
+            console.log('Using base URL:', baseUrl);
             
             if (!baseUrl) {
                 console.error("Base URL not configured");
@@ -173,7 +153,6 @@ export class TimeDisplay extends SingletonAction<TimeSettings> {
                 return;
             }
 
-            // Ensure there's exactly one slash between baseUrl and the endpoint
             const normalizedBaseUrl = baseUrl.replace(/\/+$/, '');
             const url = `${normalizedBaseUrl}/time`;
             console.log("Fetching time from:", url);
@@ -192,36 +171,18 @@ export class TimeDisplay extends SingletonAction<TimeSettings> {
                 try {
                     const data = JSON.parse(text) as TimeResponse;
                     console.log("Parsed time data:", data);
+                    const phaseText = data.timeTillChange === null ? "Wait" : `${data.timeTillChange}\n${data.isDay ? "🌙" : "☀️"}`;
                     
-                    let displayText = "";
-                    switch (displayFormat) {
-                        case "time":
-                            displayText = data.currentTimeFormatted;
-                            break;
-                        case "sunrise":
-                            displayText = data.sunriseFormatted;
-                            break;
-                        case "sunset":
-                            displayText = data.sunsetFormatted;
-                            break;
-                        case "day_length":
-                            displayText = `${data.dayLengthMinutes.toFixed(1)}m`;
-                            break;
-                        default:
-                            displayText = data.currentTimeFormatted;
-                    }
-                    
-                    // Combine custom title with display text based on position
+                    // Combine custom title with phase text based on position
                     const finalDisplayText = settings.customTitle 
                         ? titlePosition === "top"
-                            ? `${settings.customTitle}\n${displayText}`
-                            : `${displayText}\n${settings.customTitle}`
-                        : displayText;
+                            ? `${settings.customTitle}\n${phaseText}`
+                            : `${phaseText}\n${settings.customTitle}`
+                        : phaseText;
                     
                     console.log("Setting title to:", finalDisplayText);
                     await action.setTitle(finalDisplayText);
-                    // Only update lastUpdate, do not overwrite displayFormat here if it was just set
-                    await action.setSettings({ ...settings, lastUpdate: displayText });
+                    await action.setSettings({ ...settings, lastUpdate: phaseText });
                 } catch (parseError) {
                     console.error("Failed to parse JSON response:", parseError);
                     console.error("Raw response was:", text);
@@ -232,7 +193,7 @@ export class TimeDisplay extends SingletonAction<TimeSettings> {
                 await action.setTitle("Error");
             }
         } catch (error) {
-            console.error("Error in fetchTime:", error);
+            console.error("Error in fetchPhase:", error);
             await action.setTitle("Error");
         }
     }
