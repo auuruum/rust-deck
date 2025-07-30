@@ -50,6 +50,17 @@
 					"TitleAlignment": "middle"
 				}
 			]
+		},
+		{
+			"Name": "Smart switches",
+			"UUID": "com.aurum.rust-deck.smart-switches",
+			"Icon": "imgs/actions/smart_switches/icon",
+			"Tooltip": "Displays smart switch status, updates every 30 seconds.",
+			"PropertyInspectorPath": "ui/smart-switches.html",
+			"Controllers": [
+				"Keypad"
+			],
+			"Profile": "Smart Switches Profile"
 		}
 	],
 	"Category": "Rust Deck",
