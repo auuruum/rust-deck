@@ -6,7 +6,7 @@ export class SmartSwitches extends SingletonAction {
 	 * Occurs when the user presses the key action.
 	 */
 	override onKeyDown(ev: KeyDownEvent<CounterSettings>): void | Promise<void> {
-		streamDeck.profiles.switchToProfile(ev.action.device.id, "Smart Switches"); 
+		streamDeck.profiles.switchToProfile(ev.action.device.id, "profiles/Smart Switches"); 
 	}
 }
 
