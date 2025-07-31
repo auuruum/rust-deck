@@ -92,5 +92,14 @@
 		"Debug": "enabled"
 	},
 	"UUID": "com.aurum.rust-deck",
-	"PropertyInspectorPath": "ui/global-settings.html"
+	"PropertyInspectorPath": "ui/global-settings.html",
+	"Profiles": [
+        {
+            "Name": "Smart Switches",
+            "DeviceType": 0,
+            "Readonly": false,
+            "DontAutoSwitchWhenInstalled": false,
+            "AutoInstall": true
+        }
+    ]
 }
