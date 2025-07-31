@@ -1,6 +1,6 @@
 import streamDeck, { action, KeyDownEvent, SingletonAction } from "@elgato/streamdeck";
 
-@action({ UUID: "com.elgato.example.smart-switches" })
+@action({ UUID: "com.aurum.rust-deck.smart-switches" })
 export class SmartSwitches extends SingletonAction {
 	/**
 	 * Occurs when the user presses the key action.
