@@ -50,6 +50,22 @@
 					"TitleAlignment": "middle"
 				}
 			]
+		},
+		{
+			"Name": "Smart Switches",
+			"UUID": "com.aurum.rust-deck.smart-switches",
+			"Icon": "imgs/actions/smart_switches/icon",
+			"Tooltip": "Controls smart switches based on game events.",
+			"PropertyInspectorPath": "ui/smart-switches.html",
+			"Controllers": [
+				"Keypad"
+			],
+			"States": [
+				{
+					"Image": "imgs/actions/smart_switches/key",
+					"TitleAlignment": "middle"
+				}
+			]
 		}
 	],
 	"Category": "Rust Deck",
@@ -76,5 +92,13 @@
 		"Debug": "enabled"
 	},
 	"UUID": "com.aurum.rust-deck",
-	"PropertyInspectorPath": "ui/global-settings.html"
+	"PropertyInspectorPath": "ui/global-settings.html",
+	"Profiles": [
+        {
+            "Name": "profiles/Smart Switches",
+            "DeviceType": 0,
+            "Readonly": false,
+            "DontAutoSwitchWhenInstalled": false
+        }
+    ]
 }
