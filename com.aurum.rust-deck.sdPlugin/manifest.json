@@ -81,7 +81,8 @@
 					"Image": "imgs/actions/back/key",
 					"TitleAlignment": "middle"
 				}
-			]
+			],
+			"VisibleInActionsList": true
 		}
 	],
 	"Category": "Rust Deck",
