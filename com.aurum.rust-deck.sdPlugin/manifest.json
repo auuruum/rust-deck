@@ -79,7 +79,8 @@
 			"States": [
 				{
 					"Image": "imgs/actions/back/key",
-					"TitleAlignment": "middle"
+					"TitleAlignment": "middle",
+					"Title": "Back"
 				}
 			],
 			"VisibleInActionsList": true
