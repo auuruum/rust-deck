@@ -201,7 +201,7 @@ export class ProfileAction extends SingletonAction<JsonObject> {
     await this.updateButton(ev.action, coords, ev.action.device);
 
     if (!this.interval) {
-      this.interval = setInterval(async () => await this.refreshAll(), 1000);
+      this.interval = setInterval(async () => await this.refreshAll(), 500);
     }
   }
 
@@ -268,17 +268,19 @@ export class ProfileAction extends SingletonAction<JsonObject> {
         return;
       }
 
-      // Example API call to toggle switch (adjust based on your actual API)
-      const apiUrl = `${baseUrl.replace(
-        /\/$/,
-        ""
-      )}/switches/${switchId}/toggle`;
+      // Optimistically flip local state for snappier UI
+      const localIndex = this.switchesData.findIndex(s => s.id === switchId);
+      if (localIndex !== -1) {
+        this.switchesData[localIndex].active = !this.switchesData[localIndex].active;
+        await this.updateAllButtons();
+      }
+
+      // Remote API toggle
+      const apiUrl = `${baseUrl.replace(/\/$/, "")}/switches/${switchId}/toggle`;
 
       const response = await fetch(apiUrl, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
       });
 
       if (!response.ok) {
