@@ -25,6 +25,7 @@ interface SwitchData {
   server: string;
   proximity: number;
   messageId: string;
+  image: string;
 }
 
 interface SwitchesResponse {
@@ -45,6 +46,7 @@ interface AlarmData {
   location: string;
   coordinates: object;
   command: string;
+  image: string;
   server: string;
 }
 
@@ -277,8 +279,8 @@ export class ProfileAction extends SingletonAction<JsonObject> {
         const title = `${alarmData.name}\n${alarmData.location}\n${statusText}\n${timeAgo}`;
         await action.setTitle(title);
         const iconPath = alarmData.active
-          ? "imgs/icons/smart_alarm/alarm_off.png"
-          : "imgs/icons/smart_alarm/alarm_on.png";
+          ? "imgs/icons/electrics_enabled/" + alarmData.image
+          : "imgs/icons/electrics/" + alarmData.image;
         await action.setImage(iconPath);
         console.log(
           `Set alarm button ${buttonIndex} title to: ${title} with icon: ${iconPath}`
@@ -290,8 +292,8 @@ export class ProfileAction extends SingletonAction<JsonObject> {
         const title = `${switchData.name}\n${switchData.location}\n${statusText}`;
         await action.setTitle(title);
         const iconPath = switchData.active
-          ? "imgs/icons/smart_switch/smart_switch_on.png"
-          : "imgs/icons/smart_switch/smart_switch_off.png";
+          ? "imgs/icons/electrics_enabled/" + switchData.image
+          : "imgs/icons/electrics/" + switchData.image;
         await action.setImage(iconPath);
         console.log(
           `Set switch button ${buttonIndex} title to: ${title} with icon: ${iconPath}`
