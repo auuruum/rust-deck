@@ -69,6 +69,42 @@ export class ProfileAction extends SingletonAction<JsonObject> {
     new Map();
 
   /**
+   * Converts Unix timestamp to compact human-readable relative time
+   */
+  private getTimeAgo(unixTimestamp: number): string {
+    if (!unixTimestamp || unixTimestamp === 0) {
+      return "Never";
+    }
+
+    const now = Math.floor(Date.now() / 1000); // Current time in Unix timestamp
+    const diffSeconds = now - unixTimestamp;
+
+    // If timestamp is in the future, show "now"
+    if (diffSeconds < 0) {
+      return "now";
+    }
+
+    const intervals = [
+      { label: 'y', seconds: 31536000 },
+      { label: 'mo', seconds: 2592000 },
+      { label: 'w', seconds: 604800 },
+      { label: 'd', seconds: 86400 },
+      { label: 'h', seconds: 3600 },
+      { label: 'm', seconds: 60 },
+      { label: 's', seconds: 1 }
+    ];
+
+    for (const interval of intervals) {
+      const count = Math.floor(diffSeconds / interval.seconds);
+      if (count >= 1) {
+        return `(${count}${interval.label} ago)`;
+      }
+    }
+
+    return "now";
+  }
+
+  /**
    * Checks if the button is in the bottom-right position for any Stream Deck size
    */
   private isBottomRightButton(coords: any, device: any): boolean {
@@ -234,10 +270,11 @@ export class ProfileAction extends SingletonAction<JsonObject> {
       const deviceData = this.devicesData[deviceIndex];
       
       if (profileType === "smart_alarms") {
-        // Handle alarm display
+        // Handle alarm display with time information
         const alarmData = deviceData as AlarmData;
         const statusText = alarmData.active ? "On" : "Off";
-        const title = `${alarmData.name}\n${alarmData.location}\n${statusText}`;
+        const timeAgo = this.getTimeAgo(alarmData.lastTrigger);
+        const title = `${alarmData.name}\n${alarmData.location}\n${statusText}\n${timeAgo}`;
         await action.setTitle(title);
         const iconPath = alarmData.active
           ? "imgs/icons/smart_alarm/alarm_off.png"
@@ -412,6 +449,5 @@ export class ProfileAction extends SingletonAction<JsonObject> {
       console.error(`Error toggling switch ${switchId}:`, error);
     }
   }
-
 
 }
