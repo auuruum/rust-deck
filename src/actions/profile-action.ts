@@ -181,6 +181,10 @@ export class ProfileAction extends SingletonAction<JsonObject> {
   private async refreshAll(): Promise<void> {
     // Ensure switchesData is replaced, not appended, to avoid duplicates
     this.switchesData = await this.fetchSwitchesData();
+    const totalPages = Math.ceil(this.switchesData.length / (this.switchesPerPage - 2));
+    if (this.currentPage >= totalPages) {
+      this.currentPage = Math.max(0, totalPages - 1);
+    }
     await this.updateAllButtons();
   }
 
