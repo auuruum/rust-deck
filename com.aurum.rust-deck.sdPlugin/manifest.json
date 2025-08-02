@@ -68,24 +68,6 @@
 			]
 		},
 		{
-			"Name": "Back",
-			"UUID": "com.aurum.rust-deck.back",
-			"Icon": "imgs/actions/back/icon",
-			"Tooltip": "Navigates back to the previous menu.",
-			"PropertyInspectorPath": "ui/back.html",
-			"Controllers": [
-				"Keypad"
-			],
-			"States": [
-				{
-					"Image": "imgs/actions/back/key",
-					"TitleAlignment": "middle",
-					"Title": "Back"
-				}
-			],
-			"VisibleInActionsList": true
-		},
-		{
 			"Name": "Profile Action",
 			"UUID": "com.aurum.rust-deck.profile-action",
 			"Icon": "imgs/actions/profile_action/icon",

@@ -4,7 +4,7 @@ import { TimeDisplay } from "./actions/time-display";
 import { ServerInfo } from "./actions/server-info";
 import { PhaseOfDay } from "./actions/phase-of-day";
 import { SmartSwitches } from "./actions/smart-switches";
-import { Back } from "./actions/back";
+import { ProfileAction } from "./actions/profile-action";
 import { initializeGlobalSettings } from "./settings";
 
 // We can enable "trace" logging so that all messages between the Stream Deck, and the plugin are recorded. When storing sensitive information (e.g. access tokens, etc.) make sure to disable logging so that the information isn't recorded in the log files.
@@ -23,8 +23,9 @@ streamDeck.actions.registerAction(new ServerInfo());
 streamDeck.actions.registerAction(new PhaseOfDay());
 // Register the smart switches action
 streamDeck.actions.registerAction(new SmartSwitches());
+// Register the profile action
+streamDeck.actions.registerAction(new ProfileAction());
 
-streamDeck.actions.registerAction(new Back());
 
 // Connect to Stream Deck
 streamDeck.connect();
