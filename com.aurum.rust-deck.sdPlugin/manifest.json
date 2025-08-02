@@ -84,6 +84,23 @@
 				}
 			],
 			"VisibleInActionsList": true
+		},
+		{
+			"Name": "Profile Action",
+			"UUID": "com.aurum.rust-deck.profile-action",
+			"Icon": "imgs/actions/profile_action/icon",
+			"Tooltip": "Profile Action.",
+			"PropertyInspectorPath": "ui/profile-action.html",
+			"Controllers": [
+				"Keypad"
+			],
+			"States": [
+				{
+					"Image": "imgs/actions/profile-action/key",
+					"TitleAlignment": "middle"
+				}
+			],
+			"VisibleInActionsList": true
 		}
 	],
 	"Category": "Rust Deck",
