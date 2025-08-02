@@ -3,6 +3,7 @@ import {
   KeyDownEvent,
   SingletonAction,
   WillAppearEvent,
+  WillDisappearEvent,
   streamDeck,
   Target
 } from "@elgato/streamdeck";
@@ -39,6 +40,8 @@ interface GlobalSettings {
 @action({ UUID: "com.aurum.rust-deck.profile-action" })
 export class ProfileAction extends SingletonAction<JsonObject> {
   private switchesData: SwitchData[] = [];
+  private interval: NodeJS.Timeout | null = null;
+  private knownActions: Map<string, { action: any; coords: any; device: any }> = new Map();
 
   /**
    * Checks if the button is in the bottom-right position for any Stream Deck size
@@ -98,24 +101,14 @@ export class ProfileAction extends SingletonAction<JsonObject> {
   }
 
   /**
-   * Sets up button titles and images based on switches data
+   * Updates button title and image based on switches data
    */
-  private async setupButtonTitle(ev: WillAppearEvent<JsonObject> | KeyDownEvent<JsonObject>): Promise<void> {
-    const coords = (ev.payload as any).coordinates;
-    const device = ev.action.device;
-
-    // Handle the back button (bottom-right)
+  private async updateButton(action: any, coords: any, device: any): Promise<void> {
     if (this.isBottomRightButton(coords, device)) {
-      await ev.action.setTitle("Back");
+      await action.setTitle("Back");
       return;
     }
 
-    // Load switches data if not already loaded
-    if (this.switchesData.length === 0) {
-      this.switchesData = await this.fetchSwitchesData();
-    }
-
-    // Get button index and set title from switches data
     const buttonIndex = this.getButtonIndex(coords, device);
     
     if (buttonIndex >= 0 && buttonIndex < this.switchesData.length) {
@@ -126,25 +119,63 @@ export class ProfileAction extends SingletonAction<JsonObject> {
       const title = `${switchData.name}\n${switchData.location}\n${statusText}`;
       
       // Set title (Stream Deck handles alignment automatically for multi-line titles)
-      await ev.action.setTitle(title);
+      await action.setTitle(title);
       
       // Set icon based on active state
       const iconPath = switchData.active 
         ? "imgs/icons/smart_switch_on.png"
         : "imgs/icons/smart_switch_off.png";
       
-      await ev.action.setImage(iconPath);
+      await action.setImage(iconPath);
       
       console.log(`Set button ${buttonIndex} title to: ${title} with icon: ${iconPath}`);
     } else {
       // If no switch data for this button, leave it empty or set a default
-      await ev.action.setTitle("");
-      await ev.action.setImage("");
+      await action.setTitle("");
+      await action.setImage("");
     }
   }
 
+  /**
+   * Updates all known buttons without fetching new data
+   */
+  private async updateAllButtons(): Promise<void> {
+    for (const info of this.knownActions.values()) {
+      await this.updateButton(info.action, info.coords, info.device);
+    }
+  }
+
+  /**
+   * Fetches new data and updates all buttons
+   */
+  private async refreshAll(): Promise<void> {
+    this.switchesData = await this.fetchSwitchesData();
+    await this.updateAllButtons();
+  }
+
   override async onWillAppear(ev: WillAppearEvent<JsonObject>): Promise<void> {
-    await this.setupButtonTitle(ev);
+    const coords = (ev.payload as any).coordinates;
+    this.knownActions.set(ev.action.id, { action: ev.action, coords, device: ev.action.device });
+
+    if (this.switchesData.length === 0) {
+      this.switchesData = await this.fetchSwitchesData();
+    }
+
+    await this.updateButton(ev.action, coords, ev.action.device);
+
+    if (!this.interval) {
+      this.interval = setInterval(async () => await this.refreshAll(), 2000);
+    }
+  }
+
+  override async onWillDisappear(ev: WillDisappearEvent<JsonObject>): Promise<void> {
+    this.knownActions.delete(ev.action.id);
+
+    if (this.knownActions.size === 0 && this.interval) {
+      clearInterval(this.interval);
+      this.interval = null;
+      this.switchesData = [];
+    }
   }
 
   override async onKeyDown(ev: KeyDownEvent<JsonObject>): Promise<void> {
@@ -169,7 +200,7 @@ export class ProfileAction extends SingletonAction<JsonObject> {
       console.log(`Pressed switch: ${switchData.name} (ID: ${switchData.id}, Command: ${switchData.command})`);
       
       // Example: You could make an API call to toggle the switch
-      // await this.toggleSwitch(switchData.id);
+      await this.toggleSwitch(switchData.id);
     }
   }
 
@@ -204,6 +235,7 @@ export class ProfileAction extends SingletonAction<JsonObject> {
       
       // Refresh switches data to get updated state
       this.switchesData = await this.fetchSwitchesData();
+      await this.updateAllButtons();
       
     } catch (error) {
       console.error(`Error toggling switch ${switchId}:`, error);
