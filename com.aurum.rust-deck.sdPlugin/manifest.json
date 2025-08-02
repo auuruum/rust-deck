@@ -69,6 +69,23 @@
 			]
 		},
 		{
+			"Name": "Smart Alarms",
+			"UUID": "com.aurum.rust-deck.smart-alarms",
+			"Icon": "imgs/actions/smart_alarms/icon",
+			"Tooltip": "Controls smart alarms based on game events.",
+			"PropertyInspectorPath": "ui/smart-alarms.html",
+			"Controllers": [
+				"Keypad"
+			],
+			"States": [
+				{
+					"Image": "imgs/actions/smart_alarms/key",
+					"TitleAlignment": "middle",
+					"Title": "Smart\nAlarms"
+				}
+			]
+		},
+		{
 			"Name": "Profile Action",
 			"UUID": "com.aurum.rust-deck.profile-action",
 			"Icon": "imgs/actions/profile_action/icon",
@@ -113,7 +130,7 @@
 	"PropertyInspectorPath": "ui/global-settings.html",
 	"Profiles": [
         {
-            "Name": "profiles/Smart Switches",
+            "Name": "profiles/Rustplusplus",
             "DeviceType": 0,
             "Readonly": false,
             "DontAutoSwitchWhenInstalled": false
