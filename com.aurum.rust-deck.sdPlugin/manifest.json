@@ -15,7 +15,8 @@
 			"States": [
 				{
 					"Image": "imgs/actions/time_dispay/key",
-					"TitleAlignment": "middle"
+					"TitleAlignment": "middle",
+					"FontSize": 18
 				}
 			]
 		},
@@ -31,7 +32,8 @@
 			"States": [
 				{
 					"Image": "imgs/actions/server_info/key",
-					"TitleAlignment": "middle"
+					"TitleAlignment": "middle",
+					"FontSize": 13
 				}
 			]
 		},
@@ -47,7 +49,8 @@
 			"States": [
 				{
 					"Image": "imgs/actions/phase_of_day/key",
-					"TitleAlignment": "middle"
+					"TitleAlignment": "middle",
+					"FontSize": 12
 				}
 			]
 		},
