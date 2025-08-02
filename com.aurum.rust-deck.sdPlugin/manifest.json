@@ -63,7 +63,8 @@
 			"States": [
 				{
 					"Image": "imgs/actions/smart_switches/key",
-					"TitleAlignment": "middle"
+					"TitleAlignment": "middle",
+					"Title": "Smart\nSwitches"
 				}
 			]
 		},
