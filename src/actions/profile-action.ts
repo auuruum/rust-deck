@@ -317,7 +317,13 @@ export class ProfileAction extends SingletonAction<JsonObject> {
   /**
    * Fetches new data and updates all buttons
    */
+  // Prevent refresh if a toggle is in progress to avoid flicker
+  private isToggling: boolean = false;
+
   private async refreshAll(): Promise<void> {
+    if (this.isToggling) {
+      return;
+    }
     // Ensure devicesData is replaced, not appended, to avoid duplicates
     this.devicesData = await this.fetchDevicesData();
     const totalPages = Math.ceil(this.devicesData.length / (this.devicesPerPage - 2));
@@ -413,6 +419,7 @@ export class ProfileAction extends SingletonAction<JsonObject> {
    * Toggles a switch
    */
   private async toggleSwitch(switchId: string): Promise<void> {
+    this.isToggling = true;
     try {
       const globalSettings: GlobalSettings =
         await streamDeck.settings.getGlobalSettings();
@@ -444,11 +451,20 @@ export class ProfileAction extends SingletonAction<JsonObject> {
 
       console.log(`Successfully toggled switch ${switchId}`);
 
-      // Refresh devices data to get updated state
+      // Allow backend to process toggle before refreshing to prevent immediate flicker
+      await new Promise(resolve => setTimeout(resolve, 300));
       this.devicesData = await this.fetchDevicesData();
       await this.updateAllButtons();
+      this.isToggling = false;
     } catch (error) {
+      // Revert optimistic update if remote toggle fails
+      const revertIndex = this.devicesData.findIndex(s => s.id === switchId);
+      if (revertIndex !== -1) {
+        (this.devicesData[revertIndex] as SwitchData).active = !(this.devicesData[revertIndex] as SwitchData).active;
+        await this.updateAllButtons();
+      }
       console.error(`Error toggling switch ${switchId}:`, error);
+      this.isToggling = false;
     }
   }
 
