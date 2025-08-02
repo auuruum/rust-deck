@@ -103,38 +103,47 @@ export class ProfileAction extends SingletonAction<JsonObject> {
   /**
    * Updates button title and image based on switches data
    */
-  private async updateButton(action: any, coords: any, device: any): Promise<void> {
-    if (this.isBottomRightButton(coords, device)) {
-      await action.setTitle("Back");
-      return;
-    }
+  private currentPage: number = 0;
+private switchesPerPage: number = 15;
 
-    const buttonIndex = this.getButtonIndex(coords, device);
-    
-    if (buttonIndex >= 0 && buttonIndex < this.switchesData.length) {
-      const switchData = this.switchesData[buttonIndex];
-      
-      // Create multi-line title: Name\nLocation\nStatus
-      const statusText = switchData.active ? "On" : "Off";
-      const title = `${switchData.name}\n${switchData.location}\n${statusText}`;
-      
-      // Set title (Stream Deck handles alignment automatically for multi-line titles)
-      await action.setTitle(title);
-      
-      // Set icon based on active state
-      const iconPath = switchData.active 
-        ? "imgs/icons/smart_switch_on.png"
-        : "imgs/icons/smart_switch_off.png";
-      
-      await action.setImage(iconPath);
-      
-      console.log(`Set button ${buttonIndex} title to: ${title} with icon: ${iconPath}`);
-    } else {
-      // If no switch data for this button, leave it empty or set a default
-      await action.setTitle("");
-      await action.setImage("");
-    }
-  }
+private async updateButton(action: any, coords: any, device: any): Promise<void> {
+        const buttonIndex = this.getButtonIndex(coords, device);
+        const totalSwitches = this.switchesData.length;
+        const totalPages = Math.ceil(totalSwitches / (this.switchesPerPage - 2));
+
+        // Back button always first button on first page
+        if (buttonIndex === 0 && this.currentPage === 0) {
+          await action.setTitle("Back");
+          await action.setImage("");
+          return;
+        }
+
+        // Page navigation button always last button
+        if (buttonIndex === this.switchesPerPage - 1) {
+          const pageTitle = `Page ${this.currentPage + 1}/${totalPages}`;
+          await action.setTitle(pageTitle);
+          await action.setImage("");
+          return;
+        }
+
+        // Calculate switch index excluding first (back) and last (page) buttons
+        let switchIndex = this.currentPage * (this.switchesPerPage - 2) + buttonIndex - 1;
+
+        if (switchIndex >= 0 && switchIndex < totalSwitches) {
+          const switchData = this.switchesData[switchIndex];
+          const statusText = switchData.active ? "On" : "Off";
+          const title = `${switchData.name}\n${switchData.location}\n${statusText}`;
+          await action.setTitle(title);
+          const iconPath = switchData.active
+            ? "imgs/icons/smart_switch_on.png"
+            : "imgs/icons/smart_switch_off.png";
+          await action.setImage(iconPath);
+          console.log(`Set button ${buttonIndex} title to: ${title} with icon: ${iconPath}`);
+        } else {
+          await action.setTitle("");
+          await action.setImage("");
+        }
+      }
 
   /**
    * Updates all known buttons without fetching new data
@@ -179,30 +188,36 @@ export class ProfileAction extends SingletonAction<JsonObject> {
   }
 
   override async onKeyDown(ev: KeyDownEvent<JsonObject>): Promise<void> {
-    const coords = (ev.payload as any).coordinates;
-    const device = ev.action.device;
-    const deviceId = device.id;
+        const coords = (ev.payload as any).coordinates;
+        const device = ev.action.device;
+        const deviceId = device.id;
 
-    // Handle back button
-    if (this.isBottomRightButton(coords, device)) {
-      // Passing undefined as the profile name will switch back to the previous profile
-      await streamDeck.profiles.switchToProfile(deviceId, undefined);
-      return;
-    }
+        const buttonIndex = this.getButtonIndex(coords, device);
 
-    // Handle switch buttons
-    const buttonIndex = this.getButtonIndex(coords, device);
-    
-    if (buttonIndex >= 0 && buttonIndex < this.switchesData.length) {
-      const switchData = this.switchesData[buttonIndex];
-      
-      // Here you can add logic to toggle the switch or perform other actions
-      console.log(`Pressed switch: ${switchData.name} (ID: ${switchData.id}, Command: ${switchData.command})`);
-      
-      // Example: You could make an API call to toggle the switch
-      await this.toggleSwitch(switchData.id);
-    }
-  }
+        // Back button always first button on first page
+        if (buttonIndex === 0 && this.currentPage === 0) {
+          await streamDeck.profiles.switchToProfile(deviceId, undefined);
+          return;
+        }
+
+        // Page navigation button always last button
+        if (buttonIndex === this.switchesPerPage - 1) {
+          const totalSwitches = this.switchesData.length;
+          const totalPages = Math.ceil(totalSwitches / (this.switchesPerPage - 2));
+          this.currentPage = (this.currentPage + 1) % totalPages;
+          await this.updateAllButtons();
+          return;
+        }
+
+        // Handle switch buttons
+        const switchIndex = this.currentPage * (this.switchesPerPage - 2) + buttonIndex - 1;
+
+        if (switchIndex >= 0 && switchIndex < this.switchesData.length) {
+          const switchData = this.switchesData[switchIndex];
+          console.log(`Pressed switch: ${switchData.name} (ID: ${switchData.id}, Command: ${switchData.command})`);
+          await this.toggleSwitch(switchData.id);
+        }
+      }
 
   /**
    * Example method to toggle a switch (you can implement this based on your API)
