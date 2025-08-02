@@ -3,7 +3,8 @@ import {
   KeyDownEvent,
   SingletonAction,
   WillAppearEvent,
-  streamDeck
+  streamDeck,
+  Target
 } from "@elgato/streamdeck";
 import type { JsonObject } from "@elgato/streamdeck";
 
@@ -97,7 +98,7 @@ export class ProfileAction extends SingletonAction<JsonObject> {
   }
 
   /**
-   * Sets up button titles based on switches data
+   * Sets up button titles and images based on switches data
    */
   private async setupButtonTitle(ev: WillAppearEvent<JsonObject> | KeyDownEvent<JsonObject>): Promise<void> {
     const coords = (ev.payload as any).coordinates;
@@ -119,11 +120,26 @@ export class ProfileAction extends SingletonAction<JsonObject> {
     
     if (buttonIndex >= 0 && buttonIndex < this.switchesData.length) {
       const switchData = this.switchesData[buttonIndex];
-      await ev.action.setTitle(switchData.name);
-      console.log(`Set button ${buttonIndex} title to: ${switchData.name}`);
+      
+      // Create multi-line title: Name\nLocation\nStatus
+      const statusText = switchData.active ? "On" : "Off";
+      const title = `${switchData.name}\n${switchData.location}\n${statusText}`;
+      
+      // Set title (Stream Deck handles alignment automatically for multi-line titles)
+      await ev.action.setTitle(title);
+      
+      // Set icon based on active state
+      const iconPath = switchData.active 
+        ? "imgs/icons/smart_switch_on.png"
+        : "imgs/icons/smart_switch_off.png";
+      
+      await ev.action.setImage(iconPath);
+      
+      console.log(`Set button ${buttonIndex} title to: ${title} with icon: ${iconPath}`);
     } else {
       // If no switch data for this button, leave it empty or set a default
       await ev.action.setTitle("");
+      await ev.action.setImage("");
     }
   }
 
