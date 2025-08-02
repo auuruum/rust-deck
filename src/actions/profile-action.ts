@@ -120,8 +120,13 @@ private async updateButton(action: any, coords: any, device: any): Promise<void>
           return;
         }
 
-        // Page navigation button always last button
+        // Page navigation button always last button, hide if only one page or not enough switches to fill all slots
         if (buttonIndex === this.switchesPerPage - 1) {
+          if (totalPages <= 1 || totalSwitches <= this.switchesPerPage - 2) {
+            await action.setTitle("");
+            await action.setImage("");
+            return;
+          }
           const pageTitle = `Page ${this.currentPage + 1}/${totalPages}`;
           await action.setTitle(pageTitle);
           await action.setImage("");
@@ -160,6 +165,7 @@ private async updateButton(action: any, coords: any, device: any): Promise<void>
    * Fetches new data and updates all buttons
    */
   private async refreshAll(): Promise<void> {
+    // Ensure switchesData is replaced, not appended, to avoid duplicates
     this.switchesData = await this.fetchSwitchesData();
     await this.updateAllButtons();
   }
