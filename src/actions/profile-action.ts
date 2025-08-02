@@ -143,10 +143,8 @@ export class ProfileAction extends SingletonAction<JsonObject> {
 
     // Calculate switch index excluding first (back) and last (page) buttons
     let switchIndex =
-      this.currentPage * (this.switchesPerPage - 2) + buttonIndex - 1;
-    if (this.currentPage > 0) {
-      switchIndex += 1;
-    }
+      this.currentPage * (this.switchesPerPage - 2) +
+      buttonIndex - (this.currentPage === 0 ? 1 : 0);
 
     if (switchIndex >= 0 && switchIndex < totalSwitches) {
       const switchData = this.switchesData[switchIndex];
@@ -203,7 +201,7 @@ export class ProfileAction extends SingletonAction<JsonObject> {
     await this.updateButton(ev.action, coords, ev.action.device);
 
     if (!this.interval) {
-      this.interval = setInterval(async () => await this.refreshAll(), 2000);
+      this.interval = setInterval(async () => await this.refreshAll(), 1000);
     }
   }
 
@@ -242,14 +240,16 @@ export class ProfileAction extends SingletonAction<JsonObject> {
     }
 
     // Handle switch buttons
-    const switchIndex =
-      this.currentPage * (this.switchesPerPage - 2) + buttonIndex - 1;
+    let switchIndex =
+      this.currentPage * (this.switchesPerPage - 2) +
+      buttonIndex - (this.currentPage === 0 ? 1 : 0);
 
     if (switchIndex >= 0 && switchIndex < this.switchesData.length) {
       const switchData = this.switchesData[switchIndex];
       console.log(
         `Pressed switch: ${switchData.name} (ID: ${switchData.id}, Command: ${switchData.command})`
       );
+      // toggleSwitch already fetches new data and updates buttons
       await this.toggleSwitch(switchData.id);
     }
   }
