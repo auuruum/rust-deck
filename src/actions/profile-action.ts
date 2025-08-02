@@ -85,7 +85,9 @@ export class ProfileAction extends SingletonAction<JsonObject> {
       const data = await response.json() as SwitchesResponse;
       console.log(`Fetched ${data.switches.length} switches`);
       
-      return data.switches;
+      // Filter switches to include only reachable ones
+      const reachableSwitches = data.switches.filter(switchData => switchData.reachable);
+      return reachableSwitches;
     } catch (error) {
       console.error("Error fetching switches data:", error);
       return [];
