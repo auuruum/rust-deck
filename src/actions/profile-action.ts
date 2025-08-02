@@ -9,7 +9,7 @@ import {
 } from "@elgato/streamdeck";
 import type { JsonObject } from "@elgato/streamdeck";
 
-// TypeScript interfaces for the API response
+// TypeScript interfaces for switches
 interface SwitchData {
   id: string;
   name: string;
@@ -33,13 +33,37 @@ interface SwitchesResponse {
   switches: SwitchData[];
 }
 
+// TypeScript interfaces for alarms
+interface AlarmData {
+  id: string;
+  name: string;
+  active: boolean;
+  reachable: boolean;
+  message: string;
+  everyone: boolean;
+  lastTrigger: number;
+  location: string;
+  coordinates: object;
+  command: string;
+  server: string;
+}
+
+interface AlarmsResponse {
+  total: number;
+  connected: boolean;
+  alarms: AlarmData[];
+}
+
 interface GlobalSettings {
   baseUrl?: string;
+  profileType?: "smart_switches" | "smart_alarms";
 }
+
+type DeviceData = SwitchData | AlarmData;
 
 @action({ UUID: "com.aurum.rust-deck.profile-action" })
 export class ProfileAction extends SingletonAction<JsonObject> {
-  private switchesData: SwitchData[] = [];
+  private devicesData: DeviceData[] = [];
   private interval: NodeJS.Timeout | null = null;
   private knownActions: Map<string, { action: any; coords: any; device: any }> =
     new Map();
@@ -99,6 +123,61 @@ export class ProfileAction extends SingletonAction<JsonObject> {
   }
 
   /**
+   * Fetches alarms data from the API
+   */
+  private async fetchAlarmsData(): Promise<AlarmData[]> {
+    try {
+      // Get global settings to retrieve the base URL
+      const globalSettings: GlobalSettings =
+        await streamDeck.settings.getGlobalSettings();
+      const baseUrl = globalSettings.baseUrl;
+
+      if (!baseUrl) {
+        console.error("Base URL not configured in global settings");
+        return [];
+      }
+
+      // Construct the API endpoint
+      const apiUrl = `${baseUrl.replace(/\/$/, "")}/alarms`;
+
+      console.log(`Fetching alarms from: ${apiUrl}`);
+
+      const response = await fetch(apiUrl);
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = (await response.json()) as AlarmsResponse;
+      console.log(`Fetched ${data.alarms.length} alarms`);
+
+      // Filter alarms to include only reachable ones
+      const reachableAlarms = data.alarms.filter(
+        (alarmData) => alarmData.reachable
+      );
+      return reachableAlarms;
+    } catch (error) {
+      console.error("Error fetching alarms data:", error);
+      return [];
+    }
+  }
+
+  /**
+   * Fetches data based on the current profile type
+   */
+  private async fetchDevicesData(): Promise<DeviceData[]> {
+    const globalSettings: GlobalSettings =
+      await streamDeck.settings.getGlobalSettings();
+    const profileType = globalSettings.profileType || "smart_switches";
+
+    if (profileType === "smart_alarms") {
+      return await this.fetchAlarmsData();
+    } else {
+      return await this.fetchSwitchesData();
+    }
+  }
+
+  /**
    * Gets the button index from coordinates (0-based, row-major order)
    */
   private getButtonIndex(coords: any, device: any): number {
@@ -107,10 +186,10 @@ export class ProfileAction extends SingletonAction<JsonObject> {
   }
 
   /**
-   * Updates button title and image based on switches data
+   * Updates button title and image based on devices data
    */
   private currentPage: number = 0;
-  private switchesPerPage: number = 15;
+  private devicesPerPage: number = 15;
 
   private async updateButton(
     action: any,
@@ -118,8 +197,13 @@ export class ProfileAction extends SingletonAction<JsonObject> {
     device: any
   ): Promise<void> {
     const buttonIndex = this.getButtonIndex(coords, device);
-    const totalSwitches = this.switchesData.length;
-    const totalPages = Math.ceil(totalSwitches / (this.switchesPerPage - 2));
+    const totalDevices = this.devicesData.length;
+    const totalPages = Math.ceil(totalDevices / (this.devicesPerPage - 2));
+
+    // Get profile type to determine what we're showing
+    const globalSettings: GlobalSettings =
+      await streamDeck.settings.getGlobalSettings();
+    const profileType = globalSettings.profileType || "smart_switches";
 
     // Back button always first button on first page
     if (buttonIndex === 0 && this.currentPage === 0) {
@@ -128,9 +212,9 @@ export class ProfileAction extends SingletonAction<JsonObject> {
       return;
     }
 
-    // Page navigation button always last button, hide if only one page or not enough switches to fill all slots
-    if (buttonIndex === this.switchesPerPage - 1) {
-      if (totalPages <= 1 || totalSwitches <= this.switchesPerPage - 2) {
+    // Page navigation button always last button, hide if only one page or not enough devices to fill all slots
+    if (buttonIndex === this.devicesPerPage - 1) {
+      if (totalPages <= 1 || totalDevices <= this.devicesPerPage - 2) {
         await action.setTitle("");
         await action.setImage("");
         return;
@@ -141,23 +225,41 @@ export class ProfileAction extends SingletonAction<JsonObject> {
       return;
     }
 
-    // Calculate switch index excluding first (back) and last (page) buttons
-    let switchIndex =
-      this.currentPage * (this.switchesPerPage - 2) +
+    // Calculate device index excluding first (back) and last (page) buttons
+    let deviceIndex =
+      this.currentPage * (this.devicesPerPage - 2) +
       buttonIndex - (this.currentPage === 0 ? 1 : 0);
 
-    if (switchIndex >= 0 && switchIndex < totalSwitches) {
-      const switchData = this.switchesData[switchIndex];
-      const statusText = switchData.active ? "On" : "Off";
-      const title = `${switchData.name}\n${switchData.location}\n${statusText}`;
-      await action.setTitle(title);
-      const iconPath = switchData.active
-        ? "imgs/icons/smart_switch_on.png"
-        : "imgs/icons/smart_switch_off.png";
-      await action.setImage(iconPath);
-      console.log(
-        `Set button ${buttonIndex} title to: ${title} with icon: ${iconPath}`
-      );
+    if (deviceIndex >= 0 && deviceIndex < totalDevices) {
+      const deviceData = this.devicesData[deviceIndex];
+      
+      if (profileType === "smart_alarms") {
+        // Handle alarm display
+        const alarmData = deviceData as AlarmData;
+        const statusText = alarmData.active ? "On" : "Off";
+        const title = `${alarmData.name}\n${alarmData.location}\n${statusText}`;
+        await action.setTitle(title);
+        const iconPath = alarmData.active
+          ? "imgs/icons/smart_alarm/alarm_off.png"
+          : "imgs/icons/smart_alarm/alarm_on.png";
+        await action.setImage(iconPath);
+        console.log(
+          `Set alarm button ${buttonIndex} title to: ${title} with icon: ${iconPath}`
+        );
+      } else {
+        // Handle switch display (original logic)
+        const switchData = deviceData as SwitchData;
+        const statusText = switchData.active ? "On" : "Off";
+        const title = `${switchData.name}\n${switchData.location}\n${statusText}`;
+        await action.setTitle(title);
+        const iconPath = switchData.active
+          ? "imgs/icons/smart_switch/smart_switch_on.png"
+          : "imgs/icons/smart_switch/smart_switch_off.png";
+        await action.setImage(iconPath);
+        console.log(
+          `Set switch button ${buttonIndex} title to: ${title} with icon: ${iconPath}`
+        );
+      }
     } else {
       await action.setTitle("");
       await action.setImage("");
@@ -177,9 +279,9 @@ export class ProfileAction extends SingletonAction<JsonObject> {
    * Fetches new data and updates all buttons
    */
   private async refreshAll(): Promise<void> {
-    // Ensure switchesData is replaced, not appended, to avoid duplicates
-    this.switchesData = await this.fetchSwitchesData();
-    const totalPages = Math.ceil(this.switchesData.length / (this.switchesPerPage - 2));
+    // Ensure devicesData is replaced, not appended, to avoid duplicates
+    this.devicesData = await this.fetchDevicesData();
+    const totalPages = Math.ceil(this.devicesData.length / (this.devicesPerPage - 2));
     if (this.currentPage >= totalPages) {
       this.currentPage = Math.max(0, totalPages - 1);
     }
@@ -194,8 +296,8 @@ export class ProfileAction extends SingletonAction<JsonObject> {
       device: ev.action.device,
     });
 
-    if (this.switchesData.length === 0) {
-      this.switchesData = await this.fetchSwitchesData();
+    if (this.devicesData.length === 0) {
+      this.devicesData = await this.fetchDevicesData();
     }
 
     await this.updateButton(ev.action, coords, ev.action.device);
@@ -213,7 +315,7 @@ export class ProfileAction extends SingletonAction<JsonObject> {
     if (this.knownActions.size === 0 && this.interval) {
       clearInterval(this.interval);
       this.interval = null;
-      this.switchesData = [];
+      this.devicesData = [];
     }
   }
 
@@ -231,31 +333,45 @@ export class ProfileAction extends SingletonAction<JsonObject> {
     }
 
     // Page navigation button always last button
-    if (buttonIndex === this.switchesPerPage - 1) {
-      const totalSwitches = this.switchesData.length;
-      const totalPages = Math.ceil(totalSwitches / (this.switchesPerPage - 2));
+    if (buttonIndex === this.devicesPerPage - 1) {
+      const totalDevices = this.devicesData.length;
+      const totalPages = Math.ceil(totalDevices / (this.devicesPerPage - 2));
       this.currentPage = (this.currentPage + 1) % totalPages;
       await this.updateAllButtons();
       return;
     }
 
-    // Handle switch buttons
-    let switchIndex =
-      this.currentPage * (this.switchesPerPage - 2) +
+    // Handle device buttons
+    let deviceIndex =
+      this.currentPage * (this.devicesPerPage - 2) +
       buttonIndex - (this.currentPage === 0 ? 1 : 0);
 
-    if (switchIndex >= 0 && switchIndex < this.switchesData.length) {
-      const switchData = this.switchesData[switchIndex];
-      console.log(
-        `Pressed switch: ${switchData.name} (ID: ${switchData.id}, Command: ${switchData.command})`
-      );
-      // toggleSwitch already fetches new data and updates buttons
-      await this.toggleSwitch(switchData.id);
+    if (deviceIndex >= 0 && deviceIndex < this.devicesData.length) {
+      const deviceData = this.devicesData[deviceIndex];
+      
+      // Get profile type to determine what action to take
+      const globalSettings: GlobalSettings =
+        await streamDeck.settings.getGlobalSettings();
+      const profileType = globalSettings.profileType || "smart_switches";
+
+      if (profileType === "smart_alarms") {
+        // Alarms are read-only, so just refresh the data
+        console.log(
+          `Pressed alarm: ${(deviceData as AlarmData).name} (ID: ${deviceData.id}) - Refreshing`
+        );
+        await this.refreshAll();
+      } else {
+        const switchData = deviceData as SwitchData;
+        console.log(
+          `Pressed switch: ${switchData.name} (ID: ${switchData.id}, Command: ${switchData.command})`
+        );
+        await this.toggleSwitch(switchData.id);
+      }
     }
   }
 
   /**
-   * Example method to toggle a switch (you can implement this based on your API)
+   * Toggles a switch
    */
   private async toggleSwitch(switchId: string): Promise<void> {
     try {
@@ -269,9 +385,9 @@ export class ProfileAction extends SingletonAction<JsonObject> {
       }
 
       // Optimistically flip local state for snappier UI
-      const localIndex = this.switchesData.findIndex(s => s.id === switchId);
+      const localIndex = this.devicesData.findIndex(s => s.id === switchId);
       if (localIndex !== -1) {
-        this.switchesData[localIndex].active = !this.switchesData[localIndex].active;
+        (this.devicesData[localIndex] as SwitchData).active = !(this.devicesData[localIndex] as SwitchData).active;
         await this.updateAllButtons();
       }
 
@@ -289,11 +405,13 @@ export class ProfileAction extends SingletonAction<JsonObject> {
 
       console.log(`Successfully toggled switch ${switchId}`);
 
-      // Refresh switches data to get updated state
-      this.switchesData = await this.fetchSwitchesData();
+      // Refresh devices data to get updated state
+      this.devicesData = await this.fetchDevicesData();
       await this.updateAllButtons();
     } catch (error) {
       console.error(`Error toggling switch ${switchId}:`, error);
     }
   }
+
+
 }
