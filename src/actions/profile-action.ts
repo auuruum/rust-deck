@@ -1,6 +1,7 @@
 import {
   action,
   KeyDownEvent,
+  KeyUpEvent,
   SingletonAction,
   WillAppearEvent,
   WillDisappearEvent,
@@ -58,12 +59,29 @@ interface AlarmsResponse {
   alarms: AlarmData[];
 }
 
-interface GlobalSettings {
-  baseUrl?: string;
-  profileType?: "smart_switches" | "smart_alarms" | "smart_devices";
+// TypeScript interfaces for switch groups
+interface SwitchGroupData {
+  id: string;
+  name: string;
+  command: string;
+  switches: string[];
+  image: string;
+  messageId: string;
+  type: 'switchgroup'; // Add type identifier
 }
 
-type DeviceData = SwitchData | AlarmData;
+interface SwitchGroupsResponse {
+  total: number;
+  connected: boolean;
+  switchGroups: SwitchGroupData[];
+}
+
+interface GlobalSettings {
+  baseUrl?: string;
+  profileType?: "smart_switches" | "smart_alarms" | "smart_devices" | "switch_groups";
+}
+
+type DeviceData = SwitchData | AlarmData | SwitchGroupData;
 
 @action({ UUID: "com.aurum.rust-deck.profile-action" })
 export class ProfileAction extends SingletonAction<JsonObject> {
@@ -71,6 +89,11 @@ export class ProfileAction extends SingletonAction<JsonObject> {
   private interval: NodeJS.Timeout | null = null;
   private knownActions: Map<string, { action: any; coords: any; device: any }> =
     new Map();
+  
+  // Track button press timing for tap vs hold detection
+  private buttonPressTimers: Map<string, NodeJS.Timeout> = new Map();
+  private buttonPressStartTimes: Map<string, number> = new Map();
+  private readonly HOLD_THRESHOLD_MS = 500; // 500ms threshold for hold detection
 
   /**
    * Converts Unix timestamp to compact human-readable relative time
@@ -203,6 +226,45 @@ export class ProfileAction extends SingletonAction<JsonObject> {
   }
 
   /**
+   * Fetches switch groups data from the API
+   */
+  private async fetchSwitchGroupsData(): Promise<SwitchGroupData[]> {
+    try {
+      // Get global settings to retrieve the base URL
+      const globalSettings: GlobalSettings =
+        await streamDeck.settings.getGlobalSettings();
+      const baseUrl = globalSettings.baseUrl;
+
+      if (!baseUrl) {
+        console.error("Base URL not configured in global settings");
+        return [];
+      }
+
+      // Construct the API endpoint
+      const apiUrl = `${baseUrl.replace(/\/$/, "")}/switchgroups`;
+
+      console.log(`Fetching switch groups from: ${apiUrl}`);
+
+      const response = await fetch(apiUrl);
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = (await response.json()) as SwitchGroupsResponse;
+      console.log(`Fetched ${data.switchGroups.length} switch groups`);
+
+      // Add type identifier to switch groups
+      const switchGroupsWithType = data.switchGroups
+        .map((groupData) => ({ ...groupData, type: 'switchgroup' as const }));
+      return switchGroupsWithType;
+    } catch (error) {
+      console.error("Error fetching switch groups data:", error);
+      return [];
+    }
+  }
+
+  /**
    * Fetches data based on the current profile type
    */
   private async fetchDevicesData(): Promise<DeviceData[]> {
@@ -212,25 +274,29 @@ export class ProfileAction extends SingletonAction<JsonObject> {
 
     if (profileType === "smart_alarms") {
       return await this.fetchAlarmsData();
+    } else if (profileType === "switch_groups") {
+      return await this.fetchSwitchGroupsData();
     } else if (profileType === "smart_devices") {
-      // Fetch both switches and alarms, then combine them
-      const [switches, alarms] = await Promise.all([
+      // Fetch switches, alarms, and switch groups, then combine them
+      const [switches, alarms, switchGroups] = await Promise.all([
         this.fetchSwitchesData(),
-        this.fetchAlarmsData()
+        this.fetchAlarmsData(),
+        this.fetchSwitchGroupsData()
       ]);
       
-      // Combine and sort by name for consistent ordering
-      const combinedDevices = [...switches, ...alarms];
+      // Combine and sort by type and name for consistent ordering
+      const combinedDevices = [...switches, ...alarms, ...switchGroups];
       combinedDevices.sort((a, b) => {
-        // First sort by type (switches first, then alarms)
+        // First sort by type (switches, then alarms, then groups)
+        const typeOrder = { 'switch': 0, 'alarm': 1, 'switchgroup': 2 };
         if (a.type !== b.type) {
-          return a.type === 'switch' ? -1 : 1;
+          return typeOrder[a.type] - typeOrder[b.type];
         }
         // Then sort by name within each type
         return a.name.localeCompare(b.name);
       });
       
-      console.log(`Combined devices: ${switches.length} switches + ${alarms.length} alarms = ${combinedDevices.length} total`);
+      console.log(`Combined devices: ${switches.length} switches + ${alarms.length} alarms + ${switchGroups.length} groups = ${combinedDevices.length} total`);
       return combinedDevices;
     } else {
       return await this.fetchSwitchesData();
@@ -307,6 +373,46 @@ export class ProfileAction extends SingletonAction<JsonObject> {
         await action.setImage(iconPath);
         console.log(
           `Set alarm button ${buttonIndex} title to: ${title} with icon: ${iconPath}`
+        );
+      } else if (deviceData.type === 'switchgroup') {
+        const groupData = deviceData as SwitchGroupData;
+        const deviceTypeLabel = profileType === "smart_devices" ? "[G]" : "";
+        const switchCount = groupData.switches ? groupData.switches.length : 0;
+        
+        // Determine group status by checking individual switches
+        let groupStatus = "Unknown";
+        try {
+          // Get current switches data to determine group state
+          const switchesData = await this.fetchSwitchesData();
+          const groupSwitches = switchesData.filter(s => groupData.switches.includes(s.id));
+          
+          if (groupSwitches.length > 0) {
+            const activeSwitches = groupSwitches.filter(s => s.active).length;
+            const totalSwitches = groupSwitches.length;
+            
+            if (activeSwitches === 0) {
+              groupStatus = "All Off";
+            } else if (activeSwitches === totalSwitches) {
+              groupStatus = "All On";
+            } else {
+              groupStatus = `${activeSwitches}/${totalSwitches} On`;
+            }
+          }
+        } catch (error) {
+          console.error("Error determining group status:", error);
+          groupStatus = "Error";
+        }
+        
+        const title = `${deviceTypeLabel}\n${groupData.name}\n${switchCount} switches\n${groupStatus}`;
+        await action.setTitle(title);
+        
+        // Use appropriate icon based on group status
+        const iconPath = groupStatus.includes("All On") || (groupStatus.includes("/") && !groupStatus.startsWith("0/"))
+          ? "imgs/icons/electrics_enabled/" + (groupData.image || "switch.png")
+          : "imgs/icons/electrics/" + (groupData.image || "switch.png");
+        await action.setImage(iconPath);
+        console.log(
+          `Set switch group button ${buttonIndex} title to: ${title} with icon: ${iconPath}`
         );
       } else {
         // Handle switch display
@@ -385,6 +491,11 @@ export class ProfileAction extends SingletonAction<JsonObject> {
       clearInterval(this.interval);
       this.interval = null;
       this.devicesData = [];
+      
+      // Clean up any remaining timers
+      this.buttonPressTimers.forEach(timer => clearTimeout(timer));
+      this.buttonPressTimers.clear();
+      this.buttonPressStartTimes.clear();
     }
   }
 
@@ -392,8 +503,11 @@ export class ProfileAction extends SingletonAction<JsonObject> {
     const coords = (ev.payload as any).coordinates;
     const device = ev.action.device;
     const deviceId = device.id;
-
     const buttonIndex = this.getButtonIndex(coords, device);
+    const buttonKey = `${deviceId}-${buttonIndex}`;
+
+    // Store press start time
+    this.buttonPressStartTimes.set(buttonKey, Date.now());
 
     // Back button always first button on first page
     if (buttonIndex === 0 && this.currentPage === 0) {
@@ -410,7 +524,56 @@ export class ProfileAction extends SingletonAction<JsonObject> {
       return;
     }
 
-    // Handle device buttons
+    // Handle device buttons - set up hold timer for switch groups
+    let deviceIndex =
+      this.currentPage * (this.devicesPerPage - 2) +
+      buttonIndex - (this.currentPage === 0 ? 1 : 0);
+
+    if (deviceIndex >= 0 && deviceIndex < this.devicesData.length) {
+      const deviceData = this.devicesData[deviceIndex];
+      
+      if (deviceData.type === 'switchgroup') {
+        // For switch groups, set up hold detection
+        const holdTimer = setTimeout(async () => {
+          // This is a hold - turn group OFF
+          const groupData = deviceData as SwitchGroupData;
+          console.log(`Hold detected for switch group: ${groupData.name} (ID: ${groupData.id}) - Turning OFF`);
+          await this.controlSwitchGroup(groupData.id, false); // false = OFF
+          this.buttonPressTimers.delete(buttonKey);
+        }, this.HOLD_THRESHOLD_MS);
+        
+        this.buttonPressTimers.set(buttonKey, holdTimer);
+      }
+    }
+  }
+
+  override async onKeyUp(ev: KeyUpEvent<JsonObject>): Promise<void> {
+    const coords = (ev.payload as any).coordinates;
+    const device = ev.action.device;
+    const deviceId = device.id;
+    const buttonIndex = this.getButtonIndex(coords, device);
+    const buttonKey = `${deviceId}-${buttonIndex}`;
+
+    // Calculate press duration
+    const pressStartTime = this.buttonPressStartTimes.get(buttonKey);
+    const pressDuration = pressStartTime ? Date.now() - pressStartTime : 0;
+    
+    // Clean up timing data
+    this.buttonPressStartTimes.delete(buttonKey);
+    
+    // Clear hold timer if it exists
+    const holdTimer = this.buttonPressTimers.get(buttonKey);
+    if (holdTimer) {
+      clearTimeout(holdTimer);
+      this.buttonPressTimers.delete(buttonKey);
+    }
+
+    // Skip if this was a hold (already handled in onKeyDown)
+    if (pressDuration >= this.HOLD_THRESHOLD_MS) {
+      return;
+    }
+
+    // Handle tap actions (quick press/release)
     let deviceIndex =
       this.currentPage * (this.devicesPerPage - 2) +
       buttonIndex - (this.currentPage === 0 ? 1 : 0);
@@ -422,13 +585,20 @@ export class ProfileAction extends SingletonAction<JsonObject> {
       if (deviceData.type === 'alarm') {
         // Alarms are read-only, so just refresh the data
         console.log(
-          `Pressed alarm: ${(deviceData as AlarmData).name} (ID: ${deviceData.id}) - Refreshing`
+          `Tapped alarm: ${(deviceData as AlarmData).name} (ID: ${deviceData.id}) - Refreshing`
         );
         await this.refreshAll();
+      } else if (deviceData.type === 'switchgroup') {
+        // This is a tap - turn group ON
+        const groupData = deviceData as SwitchGroupData;
+        console.log(
+          `Tap detected for switch group: ${groupData.name} (ID: ${groupData.id}) - Turning ON`
+        );
+        await this.controlSwitchGroup(groupData.id, true); // true = ON
       } else {
         const switchData = deviceData as SwitchData;
         console.log(
-          `Pressed switch: ${switchData.name} (ID: ${switchData.id}, Command: ${switchData.command})`
+          `Tapped switch: ${switchData.name} (ID: ${switchData.id}, Command: ${switchData.command})`
         );
         await this.toggleSwitch(switchData.id);
       }
@@ -485,6 +655,48 @@ export class ProfileAction extends SingletonAction<JsonObject> {
       }
       console.error(`Error toggling switch ${switchId}:`, error);
       this.isToggling = false;
+    }
+  }
+
+  /**
+   * Controls a switch group (ON or OFF)
+   */
+  private async controlSwitchGroup(groupId: string, turnOn: boolean): Promise<void> {
+    this.isToggling = true;
+    try {
+      const globalSettings: GlobalSettings =
+        await streamDeck.settings.getGlobalSettings();
+      const baseUrl = globalSettings.baseUrl;
+
+      if (!baseUrl) {
+        console.error("Base URL not configured");
+        return;
+      }
+
+      const action = turnOn ? "on" : "off";
+      const apiUrl = `${baseUrl.replace(/\/$/, "")}/switchgroups/${groupId}/${action}`;
+
+      const response = await fetch(apiUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to turn switch group ${groupId} ${action}`);
+      }
+
+      console.log(`Successfully turned switch group ${groupId} ${action}`);
+
+      // Allow backend to process the group action before refreshing
+      await new Promise(resolve => setTimeout(resolve, 500));
+      this.devicesData = await this.fetchDevicesData();
+      await this.updateAllButtons();
+      this.isToggling = false;
+    } catch (error) {
+      console.error(`Error controlling switch group ${groupId}:`, error);
+      this.isToggling = false;
+      // Refresh data to ensure consistency
+      await this.refreshAll();
     }
   }
 }

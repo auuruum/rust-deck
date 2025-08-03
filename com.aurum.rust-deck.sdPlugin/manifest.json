@@ -89,6 +89,23 @@
 			]
 		},
 		{
+			"Name": "Switch Groups",
+			"UUID": "com.aurum.rust-deck.switch-groups",
+			"Icon": "imgs/actions/switch_groups/icon",
+			"Tooltip": "Controls switch groups based on game events.",
+			"PropertyInspectorPath": "ui/switch-groups.html",
+			"Controllers": [
+				"Keypad"
+			],
+			"States": [
+				{
+					"Image": "imgs/actions/switch_groups/key",
+					"TitleAlignment": "middle",
+					"Title": "Switch\nGroups"
+				}
+			]
+		},
+		{
 			"Name": "Smart Devices",
 			"UUID": "com.aurum.rust-deck.smart-devices",
 			"Icon": "imgs/actions/smart_devices/icon",
