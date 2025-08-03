@@ -26,6 +26,7 @@ interface SwitchData {
   proximity: number;
   messageId: string;
   image: string;
+  type: 'switch'; // Add type identifier
 }
 
 interface SwitchesResponse {
@@ -48,6 +49,7 @@ interface AlarmData {
   command: string;
   image: string;
   server: string;
+  type: 'alarm'; // Add type identifier
 }
 
 interface AlarmsResponse {
@@ -58,7 +60,7 @@ interface AlarmsResponse {
 
 interface GlobalSettings {
   baseUrl?: string;
-  profileType?: "smart_switches" | "smart_alarms";
+  profileType?: "smart_switches" | "smart_alarms" | "smart_devices";
 }
 
 type DeviceData = SwitchData | AlarmData;
@@ -149,10 +151,10 @@ export class ProfileAction extends SingletonAction<JsonObject> {
       const data = (await response.json()) as SwitchesResponse;
       console.log(`Fetched ${data.switches.length} switches`);
 
-      // Filter switches to include only reachable ones
-      const reachableSwitches = data.switches.filter(
-        (switchData) => switchData.reachable
-      );
+      // Filter switches to include only reachable ones and add type identifier
+      const reachableSwitches = data.switches
+        .filter((switchData) => switchData.reachable)
+        .map((switchData) => ({ ...switchData, type: 'switch' as const }));
       return reachableSwitches;
     } catch (error) {
       console.error("Error fetching switches data:", error);
@@ -189,10 +191,10 @@ export class ProfileAction extends SingletonAction<JsonObject> {
       const data = (await response.json()) as AlarmsResponse;
       console.log(`Fetched ${data.alarms.length} alarms`);
 
-      // Filter alarms to include only reachable ones
-      const reachableAlarms = data.alarms.filter(
-        (alarmData) => alarmData.reachable
-      );
+      // Filter alarms to include only reachable ones and add type identifier
+      const reachableAlarms = data.alarms
+        .filter((alarmData) => alarmData.reachable)
+        .map((alarmData) => ({ ...alarmData, type: 'alarm' as const }));
       return reachableAlarms;
     } catch (error) {
       console.error("Error fetching alarms data:", error);
@@ -210,6 +212,26 @@ export class ProfileAction extends SingletonAction<JsonObject> {
 
     if (profileType === "smart_alarms") {
       return await this.fetchAlarmsData();
+    } else if (profileType === "smart_devices") {
+      // Fetch both switches and alarms, then combine them
+      const [switches, alarms] = await Promise.all([
+        this.fetchSwitchesData(),
+        this.fetchAlarmsData()
+      ]);
+      
+      // Combine and sort by name for consistent ordering
+      const combinedDevices = [...switches, ...alarms];
+      combinedDevices.sort((a, b) => {
+        // First sort by type (switches first, then alarms)
+        if (a.type !== b.type) {
+          return a.type === 'switch' ? -1 : 1;
+        }
+        // Then sort by name within each type
+        return a.name.localeCompare(b.name);
+      });
+      
+      console.log(`Combined devices: ${switches.length} switches + ${alarms.length} alarms = ${combinedDevices.length} total`);
+      return combinedDevices;
     } else {
       return await this.fetchSwitchesData();
     }
@@ -271,12 +293,13 @@ export class ProfileAction extends SingletonAction<JsonObject> {
     if (deviceIndex >= 0 && deviceIndex < totalDevices) {
       const deviceData = this.devicesData[deviceIndex];
       
-      if (profileType === "smart_alarms") {
-        // Handle alarm display with time information
+      // Handle device display based on type
+      if (deviceData.type === 'alarm') {
         const alarmData = deviceData as AlarmData;
         const statusText = alarmData.active ? "On" : "Off";
         const timeAgo = this.getTimeAgo(alarmData.lastTrigger);
-        const title = `${alarmData.name}\n${alarmData.location}\n${statusText}\n${timeAgo}`;
+        const deviceTypeLabel = profileType === "smart_devices" ? "[A]" : "";
+        const title = `${deviceTypeLabel}\n${alarmData.name}\n${alarmData.location}\n${statusText}\n${timeAgo}`;
         await action.setTitle(title);
         const iconPath = alarmData.active
           ? "imgs/icons/electrics_enabled/" + alarmData.image
@@ -286,10 +309,11 @@ export class ProfileAction extends SingletonAction<JsonObject> {
           `Set alarm button ${buttonIndex} title to: ${title} with icon: ${iconPath}`
         );
       } else {
-        // Handle switch display (original logic)
+        // Handle switch display
         const switchData = deviceData as SwitchData;
         const statusText = switchData.active ? "On" : "Off";
-        const title = `${switchData.name}\n${switchData.location}\n${statusText}`;
+        const deviceTypeLabel = profileType === "smart_devices" ? "[S]" : "";
+        const title = `${deviceTypeLabel}\n${switchData.name}\n${switchData.location}\n${statusText}`;
         await action.setTitle(title);
         const iconPath = switchData.active
           ? "imgs/icons/electrics_enabled/" + switchData.image
@@ -394,12 +418,8 @@ export class ProfileAction extends SingletonAction<JsonObject> {
     if (deviceIndex >= 0 && deviceIndex < this.devicesData.length) {
       const deviceData = this.devicesData[deviceIndex];
       
-      // Get profile type to determine what action to take
-      const globalSettings: GlobalSettings =
-        await streamDeck.settings.getGlobalSettings();
-      const profileType = globalSettings.profileType || "smart_switches";
-
-      if (profileType === "smart_alarms") {
+      // Handle device interaction based on type
+      if (deviceData.type === 'alarm') {
         // Alarms are read-only, so just refresh the data
         console.log(
           `Pressed alarm: ${(deviceData as AlarmData).name} (ID: ${deviceData.id}) - Refreshing`
@@ -432,7 +452,7 @@ export class ProfileAction extends SingletonAction<JsonObject> {
 
       // Optimistically flip local state for snappier UI
       const localIndex = this.devicesData.findIndex(s => s.id === switchId);
-      if (localIndex !== -1) {
+      if (localIndex !== -1 && this.devicesData[localIndex].type === 'switch') {
         (this.devicesData[localIndex] as SwitchData).active = !(this.devicesData[localIndex] as SwitchData).active;
         await this.updateAllButtons();
       }
@@ -459,7 +479,7 @@ export class ProfileAction extends SingletonAction<JsonObject> {
     } catch (error) {
       // Revert optimistic update if remote toggle fails
       const revertIndex = this.devicesData.findIndex(s => s.id === switchId);
-      if (revertIndex !== -1) {
+      if (revertIndex !== -1 && this.devicesData[revertIndex].type === 'switch') {
         (this.devicesData[revertIndex] as SwitchData).active = !(this.devicesData[revertIndex] as SwitchData).active;
         await this.updateAllButtons();
       }
@@ -467,5 +487,4 @@ export class ProfileAction extends SingletonAction<JsonObject> {
       this.isToggling = false;
     }
   }
-
 }

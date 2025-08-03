@@ -89,6 +89,23 @@
 			]
 		},
 		{
+			"Name": "Smart Devices",
+			"UUID": "com.aurum.rust-deck.smart-devices",
+			"Icon": "imgs/actions/smart_devices/icon",
+			"Tooltip": "Controls smart devices.",
+			"PropertyInspectorPath": "ui/smart-devices.html",
+			"Controllers": [
+				"Keypad"
+			],
+			"States": [
+				{
+					"Image": "imgs/actions/smart_devices/key",
+					"TitleAlignment": "middle",
+					"Title": "Smart\nDevices"
+				}
+			]
+		},
+		{
 			"Name": "Profile Action",
 			"UUID": "com.aurum.rust-deck.profile-action",
 			"Icon": "imgs/actions/profile_action/icon",
@@ -103,7 +120,7 @@
 					"TitleAlignment": "middle"
 				}
 			],
-			"VisibleInActionsList": true
+			"VisibleInActionsList": false
 		}
 	],
 	"Category": "Rust Deck",
