@@ -103,7 +103,7 @@
 					"TitleAlignment": "middle"
 				}
 			],
-			"VisibleInActionsList": true
+			"VisibleInActionsList": false
 		}
 	],
 	"Category": "Rust Deck",
