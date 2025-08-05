@@ -1,3 +1,4 @@
+//C:\Users\aurum\Documents\GitHub\rust-deck\src\actions\smart-devices.ts
 import streamDeck, { action, KeyDownEvent, SingletonAction } from "@elgato/streamdeck";
 
 @action({ UUID: "com.aurum.rust-deck.smart-devices" })
