@@ -38,6 +38,29 @@ export class TimeDisplay extends SingletonAction<TimeSettings> {
 
     constructor() {
         super();
+        // Listen for WebSocket time updates
+        import("../websocket").then(({ wsClient }) => {
+            wsClient.on("time", (data: any) => {
+                if (this.currentAction && data && typeof data.currentTimeFormatted === "string") {
+                    const displayFormat = this.lastSettings.displayFormat || DEFAULT_DISPLAY_FORMAT;
+                    const titlePosition = this.lastSettings.titlePosition || DEFAULT_TITLE_POSITION;
+                    let displayText = "";
+                    if (displayFormat === "time") {
+                        displayText = data.currentTimeFormatted;
+                    } else if (displayFormat === "sunrise") {
+                        displayText = data.sunriseFormatted ?? data.currentTimeFormatted;
+                    } else if (displayFormat === "sunset") {
+                        displayText = data.sunsetFormatted ?? data.currentTimeFormatted;
+                    }
+                    if (displayText) {
+                        this.currentAction.setTitle(displayText, Target.HardwareAndSoftware, titlePosition === "bottom" ? 1 : 0);
+                    }
+                }
+            });
+        }).catch(err => {
+            console.error("Failed to attach WS listener in TimeDisplay", err);
+        });
+
         // Load global settings when the plugin starts
         this.loadGlobalSettings().then(() => {
             console.log('Global settings loaded in constructor:', this.globalSettings);

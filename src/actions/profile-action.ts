@@ -89,6 +89,21 @@ type DeviceData = SwitchData | AlarmData | SwitchGroupData;
 
 @action({ UUID: "com.aurum.rust-deck.profile-action" })
 export class ProfileAction extends SingletonAction<JsonObject> {
+  constructor() {
+    super();
+    // Attach WebSocket update listener to refresh devices data instantly
+    import("../websocket").then(({ wsClient }) => {
+      wsClient.on("update", async () => {
+        try {
+          await this.refreshAll();
+        } catch (err) {
+          console.error("Failed to refresh after WS update", err);
+        }
+      });
+    }).catch(err => {
+      console.error("ProfileAction WebSocket listener error", err);
+    });
+  }
   private devicesData: DeviceData[] = [];
   private interval: NodeJS.Timeout | null = null;
   private knownActions: Map<string, { action: any; coords: any; device: any }> =
