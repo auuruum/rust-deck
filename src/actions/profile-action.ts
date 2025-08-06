@@ -80,6 +80,9 @@ interface SwitchGroupsResponse {
 interface GlobalSettings {
   baseUrl?: string;
   profileType?: "smart_switches" | "smart_alarms" | "smart_devices" | "switch_groups";
+  hideSwitches?: boolean;
+  hideAlarms?: boolean;
+  hideSwitchesGroups?: boolean;
 }
 
 type DeviceData = SwitchData | AlarmData | SwitchGroupData;
@@ -175,6 +178,12 @@ export class ProfileAction extends SingletonAction<JsonObject> {
       const data = (await response.json()) as SwitchesResponse;
       console.log(`Fetched ${data.switches.length} switches`);
 
+      // Filter out hidden switches if specified in global settings
+      const hideSwitches = globalSettings.hideSwitches ?? false;
+      if (hideSwitches) {
+        return []; // Return empty if switches are hidden
+      }
+
       // Filter switches to include only reachable ones and add type identifier
       const reachableSwitches = data.switches
         .filter((switchData) => switchData.reachable)
@@ -215,6 +224,12 @@ export class ProfileAction extends SingletonAction<JsonObject> {
       const data = (await response.json()) as AlarmsResponse;
       console.log(`Fetched ${data.alarms.length} alarms`);
 
+      // Filter out hidden alarms if specified in global settings
+      const hideAlarms = globalSettings.hideAlarms ?? false;
+      if (hideAlarms) {
+        return []; // Return empty if alarms are hidden
+      }
+
       // Filter alarms to include only reachable ones and add type identifier
       const reachableAlarms = data.alarms
         .filter((alarmData) => alarmData.reachable)
@@ -254,6 +269,12 @@ export class ProfileAction extends SingletonAction<JsonObject> {
 
       const data = (await response.json()) as SwitchGroupsResponse;
       console.log(`Fetched ${data.switchGroups.length} switch groups`);
+
+      // Filter out hidden switch groups if specified in global settings
+      const hideSwitchesGroups = globalSettings.hideSwitchesGroups ?? false;
+      if (hideSwitchesGroups) {
+        return []; // Return empty if switch groups are hidden
+      }
 
       // Add type identifier to switch groups
       const switchGroupsWithType = data.switchGroups

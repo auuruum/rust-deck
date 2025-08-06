@@ -1,43 +1,57 @@
 /**
- * Global settings management for Stream Deck plugin
+ * Generic settings management for Stream Deck plugin property inspectors.
+ * Handles both global and action-specific settings for various input types.
  */
 
-// Initialize when the DOM is fully loaded
 document.addEventListener('DOMContentLoaded', () => {
-    // Wait for SDPIComponents to be available
     const checkSDPI = setInterval(() => {
         if (window.SDPIComponents && SDPIComponents.streamDeckClient) {
             clearInterval(checkSDPI);
-            initializeGlobalSettings();
+            initializeSettings();
         }
     }, 100);
 });
 
-function initializeGlobalSettings() {
+function initializeSettings() {
     const { streamDeckClient } = SDPIComponents;
-    
-    // Initialize all global settings inputs
-    document.querySelectorAll('sdpi-textfield[global]').forEach(input => {
+
+    // Handle all settings inputs
+    document.querySelectorAll('[setting]').forEach(input => {
         const settingName = input.getAttribute('setting');
+        const isGlobal = input.hasAttribute('global');
+        const isCheckbox = input.tagName.toLowerCase() === 'sdpi-checkbox';
+
         if (!settingName) return;
 
+        const getSettings = isGlobal 
+            ? streamDeckClient.getGlobalSettings.bind(streamDeckClient)
+            : streamDeckClient.getSettings.bind(streamDeckClient);
+
         // Load initial value
-        streamDeckClient.getGlobalSettings()
+        getSettings()
             .then(settings => {
                 if (settings && settings[settingName] !== undefined) {
-                    input.value = settings[settingName];
+                    if (isCheckbox) {
+                        input.checked = !!settings[settingName];
+                    } else {
+                        input.value = settings[settingName];
+                    }
                 }
             })
-            .catch(error => console.error('Error loading global settings:', error));
+            .catch(error => console.error(`Error loading ${isGlobal ? 'global' : 'action'} settings:`, error));
 
         // Save changes
         input.addEventListener('change', (e) => {
-            const value = e.target.value;
+            const value = isCheckbox ? e.target.checked : e.target.value;
             const update = {};
             update[settingName] = value;
             
-            streamDeckClient.setGlobalSettings(update)
-                .catch(error => console.error('Error saving global settings:', error));
+            const setSettings = isGlobal
+                ? streamDeckClient.setGlobalSettings.bind(streamDeckClient)
+                : streamDeckClient.setSettings.bind(streamDeckClient);
+
+            setSettings(update)
+                .catch(error => console.error(`Error saving ${isGlobal ? 'global' : 'action'} settings:`, error));
         });
     });
 
@@ -46,9 +60,31 @@ function initializeGlobalSettings() {
         if (!settings) return;
         
         Object.entries(settings).forEach(([key, value]) => {
-            const input = document.querySelector(`sdpi-textfield[setting="${key}"][global]`);
-            if (input && input.value !== value) {
-                input.value = value;
+            const input = document.querySelector(`[setting="${key}"][global]`);
+            if (input) {
+                const isCheckbox = input.tagName.toLowerCase() === 'sdpi-checkbox';
+                if (isCheckbox) {
+                    if (input.checked !== !!value) input.checked = !!value;
+                } else {
+                    if (input.value !== value) input.value = value;
+                }
+            }
+        });
+    });
+
+    // Handle action settings updates from the plugin
+    streamDeckClient.onDidReceiveSettings(({ settings }) => {
+        if (!settings) return;
+        
+        Object.entries(settings).forEach(([key, value]) => {
+            const input = document.querySelector(`[setting="${key}"]:not([global])`);
+            if (input) {
+                const isCheckbox = input.tagName.toLowerCase() === 'sdpi-checkbox';
+                if (isCheckbox) {
+                    if (input.checked !== !!value) input.checked = !!value;
+                } else {
+                    if (input.value !== value) input.value = value;
+                }
             }
         });
     });
