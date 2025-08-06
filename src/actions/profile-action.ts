@@ -493,15 +493,14 @@ export class ProfileAction extends SingletonAction<JsonObject> {
       device: ev.action.device,
     });
 
-    // If this is the first button to appear, trigger a refresh.
-    if (this.knownActions.size === 1) {
-      await this.refreshAll();
+    if (this.devicesData.length === 0) {
+      this.devicesData = await this.fetchDevicesData();
     }
 
     await this.updateButton(ev.action, coords, ev.action.device);
 
     if (!this.interval) {
-      this.interval = setInterval(() => this.refreshAll(), 5000); // Refresh every 5 seconds
+      this.interval = setInterval(async () => await this.refreshAll(), 500);
     }
   }
 
@@ -510,13 +509,10 @@ export class ProfileAction extends SingletonAction<JsonObject> {
   ): Promise<void> {
     this.knownActions.delete(ev.action.id);
 
-    if (this.knownActions.size === 0) {
-      if (this.interval) {
-        clearInterval(this.interval);
-        this.interval = null;
-      }
+    if (this.knownActions.size === 0 && this.interval) {
+      clearInterval(this.interval);
+      this.interval = null;
       this.devicesData = [];
-      this.currentPage = 0; // Reset to the first page
       
       // Clean up any remaining timers
       this.buttonPressTimers.forEach(timer => clearTimeout(timer));
