@@ -95,7 +95,7 @@ export class ProfileAction extends SingletonAction<JsonObject> {
     import("../websocket").then(({ wsClient }) => {
       wsClient.on("update", async () => {
         try {
-          await this.refreshAll();
+          await this.refreshAll(true);
         } catch (err) {
           console.error("Failed to refresh after WS update", err);
         }
@@ -167,7 +167,7 @@ export class ProfileAction extends SingletonAction<JsonObject> {
   /**
    * Fetches switches data from the API
    */
-  private async fetchSwitchesData(): Promise<SwitchData[]> {
+  private async fetchSwitchesData(includeHidden: boolean = false): Promise<SwitchData[]> {
     try {
       // Get global settings to retrieve the base URL
       const globalSettings: GlobalSettings =
@@ -195,9 +195,9 @@ export class ProfileAction extends SingletonAction<JsonObject> {
 
       // Filter out hidden switches if specified in global settings
       const hideSwitches = globalSettings.hideSwitches ?? false;
-      if (hideSwitches) {
-        return []; // Return empty if switches are hidden
-      }
+      if (hideSwitches && !includeHidden) {
+         return []; // Return empty if switches are hidden
+       }
 
       // Filter switches to include only reachable ones and add type identifier
       const reachableSwitches = data.switches
@@ -420,7 +420,7 @@ export class ProfileAction extends SingletonAction<JsonObject> {
         let groupStatus = "Unknown";
         try {
           // Get current switches data to determine group state
-          const switchesData = await this.fetchSwitchesData();
+          const switchesData = await this.fetchSwitchesData(true);
           const groupSwitches = switchesData.filter(s => groupData.switches.includes(s.id));
           
           if (groupSwitches.length > 0) {
@@ -487,8 +487,8 @@ export class ProfileAction extends SingletonAction<JsonObject> {
   // Prevent refresh if a toggle is in progress to avoid flicker
   private isToggling: boolean = false;
 
-  private async refreshAll(): Promise<void> {
-    if (this.isToggling) {
+  private async refreshAll(force: boolean = false): Promise<void> {
+    if (this.isToggling && !force) {
       return;
     }
     // Ensure devicesData is replaced, not appended, to avoid duplicates
