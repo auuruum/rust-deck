@@ -55,40 +55,6 @@
 			]
 		},
 		{
-			"Name": "Smart Switches",
-			"UUID": "com.aurum.rust-deck.smart-switches",
-			"Icon": "imgs/actions/smart_switches/icon",
-			"Tooltip": "Controls smart switches based on game events.",
-			"PropertyInspectorPath": "ui/smart-switches.html",
-			"Controllers": [
-				"Keypad"
-			],
-			"States": [
-				{
-					"Image": "imgs/actions/smart_switches/key",
-					"TitleAlignment": "middle",
-					"Title": "Smart\nSwitches"
-				}
-			]
-		},
-		{
-			"Name": "Smart Alarms",
-			"UUID": "com.aurum.rust-deck.smart-alarms",
-			"Icon": "imgs/actions/smart_alarms/icon",
-			"Tooltip": "Controls smart alarms based on game events.",
-			"PropertyInspectorPath": "ui/smart-alarms.html",
-			"Controllers": [
-				"Keypad"
-			],
-			"States": [
-				{
-					"Image": "imgs/actions/smart_alarms/key",
-					"TitleAlignment": "middle",
-					"Title": "Smart\nAlarms"
-				}
-			]
-		},
-		{
 			"Name": "Smart Devices",
 			"UUID": "com.aurum.rust-deck.smart-devices",
 			"Icon": "imgs/actions/smart_devices/icon",
