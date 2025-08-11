@@ -248,12 +248,22 @@ export class JoinServer extends SingletonAction {
         const response = await fetch(url);
         console.log("Response status:", response.status);
 
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
         const text = await response.text();
         console.log("Raw response length:", text.length);
+        
+        if (!response.ok) {
+          // Try to parse error response for specific error messages
+          try {
+            const errorData = JSON.parse(text);
+            if (errorData.error === "Guild not found or no active server") {
+              await (this.currentAction as any).setTitle("No server");
+              return;
+            }
+          } catch (parseError) {
+            // If we can't parse the error response, fall through to generic error
+          }
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
 
         let data: ServerResponse;
         try {
