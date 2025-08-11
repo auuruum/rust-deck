@@ -72,6 +72,23 @@
 			]
 		},
 		{
+			"Name": "Join Server",
+			"UUID": "com.aurum.rust-deck.join-server",
+			"Icon": "imgs/actions/join_server/icon",
+			"Tooltip": "Joins the server.",
+			"PropertyInspectorPath": "ui/join-server.html",
+			"Controllers": [
+				"Keypad"
+			],
+			"States": [
+				{
+					"Image": "imgs/actions/join_server/key",
+					"TitleAlignment": "middle",
+					"Title": "Join\nServer"
+				}
+			]
+		},
+		{
 			"Name": "Profile Action",
 			"UUID": "com.aurum.rust-deck.profile-action",
 			"Icon": "imgs/actions/profile_action/icon",
