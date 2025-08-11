@@ -41,17 +41,23 @@ export interface ServerResponse {
 interface JoinServerSettings extends JsonObject {
   serverEndpoint?: string;
   updateInterval?: string;
+  maxTitleLength?: string; // New setting for title length control
+  useMultiLine?: boolean; // New setting for multi-line support
   [key: string]: string | number | boolean | null | undefined;
 }
 
 const DEFAULT_SERVER_ENDPOINT = "";
 const DEFAULT_UPDATE_INTERVAL = "5"; // 5 seconds as requested
+const DEFAULT_MAX_TITLE_LENGTH = "12";
+const DEFAULT_USE_MULTILINE = false;
 
 @action({ UUID: "com.aurum.rust-deck.join-server" })
 export class JoinServer extends SingletonAction {
   private settings: JoinServerSettings = {
     serverEndpoint: DEFAULT_SERVER_ENDPOINT,
     updateInterval: DEFAULT_UPDATE_INTERVAL,
+    maxTitleLength: DEFAULT_MAX_TITLE_LENGTH,
+    useMultiLine: DEFAULT_USE_MULTILINE,
   };
 
   private updateInterval: NodeJS.Timeout | null = null;
@@ -100,6 +106,138 @@ export class JoinServer extends SingletonAction {
     }
   }
 
+  // Helper method to clean server title by removing common prefixes/suffixes
+  private cleanServerTitle(title: string): string {
+    return title
+      .replace(/^\[.*?\]\s*/, '') // Remove [brackets] at start
+      .replace(/^\{.*?\}\s*/, '') // Remove {braces} at start
+      .replace(/\s*-\s*Official$/i, '') // Remove "- Official" suffix
+      .replace(/\s*Official$/i, '') // Remove "Official" suffix
+      .replace(/\s*Server$/i, '') // Remove "Server" suffix
+      .replace(/\s*\|\s*.*$/, '') // Remove everything after |
+      .replace(/\s*#\d+$/, '') // Remove #1, #2 etc at end
+      .trim();
+  }
+
+  // Helper method to abbreviate common words
+  private abbreviateTitle(title: string): string {
+    const abbreviations: { [key: string]: string } = {
+      'Community': 'Com',
+      'Modded': 'Mod',
+      'Vanilla': 'Van',
+      'Hardcore': 'HC',
+      'Battlefield': 'BF',
+      'Roleplay': 'RP',
+      'Creative': 'Crea',
+      'Building': 'Build',
+      'Survival': 'Surv',
+      'Practice': 'Prac',
+      'Training': 'Train',
+      'European': 'EU',
+      'American': 'US',
+      'Australian': 'AU',
+      'Canadian': 'CA'
+    };
+    
+    let result = title;
+    Object.entries(abbreviations).forEach(([full, abbrev]) => {
+      result = result.replace(new RegExp(`\\b${full}\\b`, 'gi'), abbrev);
+    });
+    
+    return result;
+  }
+
+  // Helper method to truncate title at word boundaries
+  private truncateTitle(title: string, maxLength: number): string {
+    if (title.length <= maxLength) {
+      return title;
+    }
+    
+    // Try to truncate at word boundaries
+    const words = title.split(' ');
+    let result = '';
+    
+    for (const word of words) {
+      const testLength = result ? result.length + 1 + word.length : word.length;
+      if (testLength > maxLength - 3) { // -3 for "..."
+        break;
+      }
+      result += (result ? ' ' : '') + word;
+    }
+    
+    // If we couldn't fit any words, just truncate the first word
+    if (!result && words[0]) {
+      result = words[0].substring(0, maxLength - 3);
+    }
+    
+    return result + '...';
+  }
+
+  // Helper method to format multi-line title
+  private formatMultiLineTitle(title: string, maxLineLength: number): string {
+    const words = title.split(' ');
+    const lines: string[] = [];
+    let currentLine = '';
+    
+    for (const word of words) {
+      const testLength = currentLine ? currentLine.length + 1 + word.length : word.length;
+      
+      if (testLength > maxLineLength && currentLine) {
+        lines.push(currentLine.trim());
+        currentLine = word;
+      } else {
+        currentLine += (currentLine ? ' ' : '') + word;
+      }
+      
+      // Limit to 2 lines max for Stream Deck
+      if (lines.length >= 1 && currentLine) {
+        // Truncate the second line if needed
+        if (currentLine.length > maxLineLength) {
+          currentLine = this.truncateTitle(currentLine, maxLineLength);
+        }
+        lines.push(currentLine);
+        break;
+      }
+    }
+    
+    // Add remaining text if we haven't reached 2 lines yet
+    if (currentLine && lines.length < 2) {
+      if (currentLine.length > maxLineLength) {
+        currentLine = this.truncateTitle(currentLine, maxLineLength);
+      }
+      lines.push(currentLine);
+    }
+    
+    return lines.join('\n');
+  }
+
+  // Main method to process server title for display
+  private processServerTitle(title: string): string {
+    const maxLength = parseInt(this.settings.maxTitleLength || DEFAULT_MAX_TITLE_LENGTH);
+    const useMultiLine = this.settings.useMultiLine === true;
+    
+    console.log(`Processing title: "${title}" (max: ${maxLength}, multiline: ${useMultiLine})`);
+    
+    // Step 1: Clean the title
+    let processedTitle = this.cleanServerTitle(title);
+    console.log(`After cleaning: "${processedTitle}"`);
+    
+    // Step 2: Abbreviate common words
+    processedTitle = this.abbreviateTitle(processedTitle);
+    console.log(`After abbreviation: "${processedTitle}"`);
+    
+    // Step 3: Apply multi-line or single-line truncation
+    if (useMultiLine) {
+      const lineLength = Math.max(6, Math.floor(maxLength * 0.7)); // Shorter lines for multi-line
+      processedTitle = this.formatMultiLineTitle(processedTitle, lineLength);
+    } else {
+      processedTitle = this.truncateTitle(processedTitle, maxLength);
+    }
+    
+    console.log(`Final processed title: "${processedTitle}"`);
+    return processedTitle;
+  }
+
   override async onWillAppear(ev: WillAppearEvent<JoinServerSettings>) {
     this.currentAction = ev.action;
     const currentSettings = ev.payload.settings || {};
@@ -112,6 +250,8 @@ export class JoinServer extends SingletonAction {
       ...currentSettings,
       serverEndpoint: currentSettings.serverEndpoint || DEFAULT_SERVER_ENDPOINT,
       updateInterval: currentSettings.updateInterval || DEFAULT_UPDATE_INTERVAL,
+      maxTitleLength: currentSettings.maxTitleLength || DEFAULT_MAX_TITLE_LENGTH,
+      useMultiLine: currentSettings.useMultiLine !== undefined ? currentSettings.useMultiLine : DEFAULT_USE_MULTILINE,
     };
 
     console.log("onWillAppear - New settings:", newSettings);
@@ -295,13 +435,13 @@ export class JoinServer extends SingletonAction {
 
         console.log("Server info received:", data.server.title);
 
-        // Set the button title to the server title
-        const title = data.server.title;
+        // Process the server title to fit the button
+        const processedTitle = this.processServerTitle(data.server.title);
 
         if (this.currentAction) {
           try {
-            await (this.currentAction as any).setTitle(title);
-            console.log("Successfully set title:", title);
+            await (this.currentAction as any).setTitle(processedTitle);
+            console.log(`Successfully set title: "${processedTitle}"`);
           } catch (error) {
             console.error("Failed to set title:", error);
             await (this.currentAction as any).setTitle("Set Error");
