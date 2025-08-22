@@ -35,7 +35,7 @@ export class ServerInfo extends SingletonAction {
     
     private updateInterval: NodeJS.Timeout | null = null;
     private currentAction: Action | null = null;
-    private globalSettings: GlobalSettings = { baseUrl: "http://localhost:8080" };
+    private globalSettings: GlobalSettings = { baseUrl: "http://localhost:8074" };
     private lastSettings: ServerInfoSettings | null = null;
 
 
@@ -158,7 +158,7 @@ export class ServerInfo extends SingletonAction {
 
     private getServerUrl(): string {
         // Remove any trailing slashes from the base URL
-        const baseUrl = (this.globalSettings?.baseUrl?.trim() || "http://localhost:8080").replace(/\/+$/, '');
+        const baseUrl = (this.globalSettings?.baseUrl?.trim() || "http://localhost:8074").replace(/\/+$/, '');
         // Ensure server path starts with a single slash
         const serverPath = this.settings.serverPath?.startsWith('/') 
             ? this.settings.serverPath 

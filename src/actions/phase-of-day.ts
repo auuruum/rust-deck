@@ -23,7 +23,7 @@ interface TimeResponse {
     timeScale: number;
 }
 
-const DEFAULT_BASE_URL = "http://localhost:8080";
+const DEFAULT_BASE_URL = "http://localhost:8074";
 const DEFAULT_TITLE_POSITION = "top";
 const DEFAULT_UPDATE_INTERVAL = "30";
 

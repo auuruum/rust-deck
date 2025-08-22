@@ -62,7 +62,7 @@ export class JoinServer extends SingletonAction {
 
   private updateInterval: NodeJS.Timeout | null = null;
   private currentAction: Action | null = null;
-  private globalSettings: GlobalSettings = { baseUrl: "http://localhost:8080" };
+  private globalSettings: GlobalSettings = { baseUrl: "http://localhost:8074" };
   private lastSettings: JoinServerSettings | null = null;
   private serverData: ServerResponse | null = null;
 

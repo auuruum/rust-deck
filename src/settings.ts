@@ -6,7 +6,7 @@ export interface GlobalSettings {
 }
 
 const defaultSettings: GlobalSettings = {
-    baseUrl: "http://localhost:8080"
+    baseUrl: "http://localhost:8074"
 };
 
 let globalSettings: GlobalSettings = { ...defaultSettings };
