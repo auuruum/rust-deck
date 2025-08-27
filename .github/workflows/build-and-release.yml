@@ -1,0 +1,55 @@
+name: Build and Release Stream Deck Plugin
+
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  validate-and-build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Install Stream Deck CLI
+      run: npm install -g @elgato/cli
+    
+    - name: Validate plugin
+      run: streamdeck validate com.aurum.rust-deck.sdPlugin
+    
+    - name: Build plugin
+      run: npm run build
+      # Note: The build process automatically creates the .streamDeckPlugin file
+    
+    - name: Upload plugin artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: rust-deck-plugin
+        path: com.aurum.rust-deck.streamDeckPlugin
+        retention-days: 30
+    
+    # Only create release on tag push
+    - name: Create Release
+      if: startsWith(github.ref, 'refs/tags/v')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: com.aurum.rust-deck.streamDeckPlugin
+        draft: false
+        prerelease: false
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
