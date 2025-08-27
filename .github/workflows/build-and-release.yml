@@ -30,10 +30,12 @@ jobs:
     
     - name: Build plugin
       run: npm run build
-      # Note: The build process automatically creates the .streamDeckPlugin file
     
     - name: Validate plugin
       run: streamdeck validate com.aurum.rust-deck.sdPlugin
+    
+    - name: Package plugin
+      run: streamdeck pack com.aurum.rust-deck.sdPlugin --no-update-check
     
     - name: Upload plugin artifact
       uses: actions/upload-artifact@v4
