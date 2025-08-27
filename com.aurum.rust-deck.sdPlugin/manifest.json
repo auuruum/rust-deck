@@ -99,7 +99,7 @@
 			],
 			"States": [
 				{
-					"Image": "imgs/actions/profile-action/key",
+					"Image": "imgs/actions/profile_action/key",
 					"TitleAlignment": "middle"
 				}
 			],
