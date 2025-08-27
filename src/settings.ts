@@ -2,11 +2,13 @@ import { streamDeck } from "@elgato/streamdeck";
 
 export interface GlobalSettings {
     baseUrl: string;
+    apiPassword?: string;
     [key: string]: string | undefined;
 }
 
 const defaultSettings: GlobalSettings = {
-    baseUrl: "http://localhost:8074"
+    baseUrl: "http://localhost:8074",
+    apiPassword: ""
 };
 
 let globalSettings: GlobalSettings = { ...defaultSettings };
@@ -36,6 +38,24 @@ export function getBaseUrl(): string {
     return globalSettings.baseUrl || defaultSettings.baseUrl;
 }
 
+export function getApiPassword(): string {
+    console.log("Getting API password from settings:", globalSettings.apiPassword ? "[REDACTED]" : "(empty)");
+    return globalSettings.apiPassword || "";
+}
+
+export function createAuthHeaders(): HeadersInit {
+    const apiPassword = getApiPassword();
+    const headers: HeadersInit = {
+        "Content-Type": "application/json"
+    };
+    
+    if (apiPassword) {
+        headers["X-API-Key"] = apiPassword;
+    }
+    
+    return headers;
+}
+
 export async function setGlobalSettings(settings: Partial<GlobalSettings>): Promise<void> {
     console.log("Setting global settings:", settings);
     globalSettings = { ...globalSettings, ...settings };
@@ -45,4 +65,4 @@ export async function setGlobalSettings(settings: Partial<GlobalSettings>): Prom
 // Initialize settings when the module loads
 initializeGlobalSettings().catch(error => {
     console.error("Failed to initialize global settings:", error);
-}); 
+});

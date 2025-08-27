@@ -114,8 +114,13 @@ streamdeck pack com.aurum.rust-deck.sdPlugin
 
 ### Server Connection
 1. Add the plugin actions to your Stream Deck
-2. Configure server connection details in the property inspector
+2. Configure server connection details in the property inspector:
+   - **Base URL**: The API endpoint (e.g., `http://localhost:8074`)
+   - **API Password**: Authentication key for secure API access (optional)
 3. Test the connection
+
+#### API Authentication
+The plugin supports API authentication using the `X-API-Key` header. When an API Password is configured in the global settings, it will be automatically included in all API requests for secure access to your RustPlusPlus API endpoints.
 
 ### Action Setup
 Each action can be configured through its property inspector:

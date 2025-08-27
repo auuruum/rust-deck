@@ -201,8 +201,15 @@ export class TimeDisplay extends SingletonAction<TimeSettings> {
             const url = `${normalizedBaseUrl}/time`;
             console.log("Fetching time from:", url);
             
+            // Get API password from global settings
+            const apiPassword = this.globalSettings?.apiPassword;
+            const headers: HeadersInit = {};
+            if (apiPassword) {
+                headers["X-API-Key"] = apiPassword;
+            }
+            
             try {
-                const response = await fetch(url);
+                const response = await fetch(url, { headers });
                 console.log("Response status:", response.status);
                 
                 if (!response.ok) {

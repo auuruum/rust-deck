@@ -184,7 +184,14 @@ export class ServerInfo extends SingletonAction {
             const url = `${normalizedBaseUrl}${path}`;
             console.log('Fetching server info from:', url);
 
-            const response = await fetch(url);
+            // Get API password from global settings
+            const apiPassword = this.globalSettings?.apiPassword;
+            const headers: HeadersInit = {};
+            if (apiPassword) {
+                headers["X-API-Key"] = apiPassword;
+            }
+
+            const response = await fetch(url, { headers });
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }

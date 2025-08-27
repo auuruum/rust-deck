@@ -79,6 +79,7 @@ interface SwitchGroupsResponse {
 
 interface GlobalSettings {
   baseUrl?: string;
+  apiPassword?: string;
   profileType?: "smart_switches" | "smart_alarms" | "smart_devices" | "switch_groups";
   hideSwitches?: boolean;
   hideAlarms?: boolean;
@@ -184,7 +185,14 @@ export class ProfileAction extends SingletonAction<JsonObject> {
 
       console.log(`Fetching switches from: ${apiUrl}`);
 
-      const response = await fetch(apiUrl);
+      // Get API password from global settings
+      const apiPassword = globalSettings.apiPassword;
+      const headers: HeadersInit = {};
+      if (apiPassword) {
+        headers["X-API-Key"] = apiPassword;
+      }
+
+      const response = await fetch(apiUrl, { headers });
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -230,7 +238,14 @@ export class ProfileAction extends SingletonAction<JsonObject> {
 
       console.log(`Fetching alarms from: ${apiUrl}`);
 
-      const response = await fetch(apiUrl);
+      // Get API password from global settings
+      const apiPassword = globalSettings.apiPassword;
+      const headers: HeadersInit = {};
+      if (apiPassword) {
+        headers["X-API-Key"] = apiPassword;
+      }
+
+      const response = await fetch(apiUrl, { headers });
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -276,7 +291,14 @@ export class ProfileAction extends SingletonAction<JsonObject> {
 
       console.log(`Fetching switch groups from: ${apiUrl}`);
 
-      const response = await fetch(apiUrl);
+      // Get API password from global settings
+      const apiPassword = globalSettings.apiPassword;
+      const headers: HeadersInit = {};
+      if (apiPassword) {
+        headers["X-API-Key"] = apiPassword;
+      }
+
+      const response = await fetch(apiUrl, { headers });
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -667,9 +689,16 @@ export class ProfileAction extends SingletonAction<JsonObject> {
       // Remote API toggle
       const apiUrl = `${baseUrl.replace(/\/$/, "")}/switches/${switchId}/toggle`;
 
+      // Get API password from global settings
+      const apiPassword = globalSettings.apiPassword;
+      const headers: HeadersInit = { "Content-Type": "application/json" };
+      if (apiPassword) {
+        headers["X-API-Key"] = apiPassword;
+      }
+
       const response = await fetch(apiUrl, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
       });
 
       if (!response.ok) {
