@@ -132,11 +132,11 @@
 	"UUID": "com.aurum.rust-deck",
 	"PropertyInspectorPath": "ui/global-settings.html",
 	"Profiles": [
-        {
-            "Name": "profiles/Rustplusplus",
-            "DeviceType": 0,
-            "Readonly": false,
-            "DontAutoSwitchWhenInstalled": false
-        }
-    ]
+		{
+			"Name": "profiles/Rustplusplus",
+			"DeviceType": 0,
+			"Readonly": false,
+			"DontAutoSwitchWhenInstalled": false
+		}
+	]
 }
