@@ -116,6 +116,7 @@ interface TrackerPlayerData {
   id: string; // trackerId + steamId for uniqueness
   name: string; // player name
   steamId: string; // Steam 64-bit ID
+  battlemetricsId: string | null;
   trackerName: string; // tracker label (e.g. "karapuzik")
   trackerTitle: string; // server title
   playerStatus: string; // "online" | "not_found" | etc.
@@ -502,6 +503,7 @@ export class ProfileAction extends SingletonAction<JsonObject> {
             id: `${tracker.id}-${player.steamId}`,
             name: player.name,
             steamId: player.steamId,
+            battlemetricsId: player.battlemetricsId,
             trackerName: tracker.name,
             trackerTitle: tracker.title,
             playerStatus: player.status,
@@ -814,6 +816,21 @@ export class ProfileAction extends SingletonAction<JsonObject> {
         }, this.HOLD_THRESHOLD_MS);
         
         this.buttonPressTimers.set(buttonKey, holdTimer);
+      } else if (deviceData.type === 'tracker') {
+        // For tracker buttons, hold opens BattleMetrics
+        const holdTimer = setTimeout(async () => {
+          const trackerPlayer = deviceData as TrackerPlayerData;
+          if (trackerPlayer.battlemetricsId) {
+            const url = `https://www.battlemetrics.com/players/${trackerPlayer.battlemetricsId}`;
+            console.log(`Hold detected for tracker player: ${trackerPlayer.name} - Opening BattleMetrics: ${url}`);
+            await streamDeck.system.openUrl(url);
+          } else {
+            console.log(`Hold detected for tracker player: ${trackerPlayer.name} - No BattleMetrics ID available`);
+          }
+          this.buttonPressTimers.delete(buttonKey);
+        }, this.HOLD_THRESHOLD_MS);
+
+        this.buttonPressTimers.set(buttonKey, holdTimer);
       }
     }
   }
@@ -854,9 +871,11 @@ export class ProfileAction extends SingletonAction<JsonObject> {
       
       // Handle device interaction based on type
       if (deviceData.type === 'tracker') {
-        // Trackers are read-only, refresh to get latest player data
-        console.log(`Tapped tracker player: ${(deviceData as TrackerPlayerData).name} - Refreshing`);
-        await this.refreshAll();
+        // Tap - open Steam profile
+        const trackerPlayer = deviceData as TrackerPlayerData;
+        const url = `https://steamcommunity.com/profiles/${trackerPlayer.steamId}`;
+        console.log(`Tapped tracker player: ${trackerPlayer.name} - Opening Steam profile: ${url}`);
+        await streamDeck.system.openUrl(url);
       } else if (deviceData.type === 'alarm') {
         // Alarms are read-only, so just refresh the data
         console.log(
