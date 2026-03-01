@@ -10,6 +10,8 @@ import {
   Target,
 } from "@elgato/streamdeck";
 import type { JsonObject } from "@elgato/streamdeck";
+import { PNG } from "pngjs";
+import jpegJs from "jpeg-js";
 
 // TypeScript interfaces for switches
 interface SwitchData {
@@ -77,16 +79,60 @@ interface SwitchGroupsResponse {
   switchGroups: SwitchGroupData[];
 }
 
+// TypeScript interfaces for trackers
+interface TrackerPlayerEntry {
+  name: string;
+  steamId: string;
+  battlemetricsId: string | null;
+  status: string;
+  time: string | null;
+}
+
+interface TrackerEntry {
+  id: string;
+  trackerId: number;
+  name: string;
+  serverId: string;
+  battlemetricsId: string;
+  title: string;
+  img: string;
+  clanTag: string;
+  everyone: boolean;
+  inGame: boolean;
+  serverStatus: string;
+  streamerMode: boolean;
+  messageId: string;
+  createdAt: number;
+  players: TrackerPlayerEntry[];
+}
+
+interface TrackersResponse {
+  total: number;
+  trackers: TrackerEntry[];
+}
+
+// Flat representation used as a DeviceData entry – one entry per player per tracker
+interface TrackerPlayerData {
+  id: string; // trackerId + steamId for uniqueness
+  name: string; // player name
+  steamId: string; // Steam 64-bit ID
+  trackerName: string; // tracker label (e.g. "karapuzik")
+  trackerTitle: string; // server title
+  playerStatus: string; // "online" | "not_found" | etc.
+  playerTime: string | null;
+  type: 'tracker';
+}
+
 interface GlobalSettings {
   baseUrl?: string;
   apiPassword?: string;
-  profileType?: "smart_switches" | "smart_alarms" | "smart_devices" | "switch_groups";
+  profileType?: "smart_switches" | "smart_alarms" | "smart_devices" | "switch_groups" | "trackers";
   hideSwitches?: boolean;
   hideAlarms?: boolean;
   hideSwitchesGroups?: boolean;
 }
 
-type DeviceData = SwitchData | AlarmData | SwitchGroupData;
+type DeviceData = SwitchData | AlarmData | SwitchGroupData | TrackerPlayerData;
 
 @action({ UUID: "com.aurum.rust-deck.profile-action" })
 export class ProfileAction extends SingletonAction<JsonObject> {
@@ -323,6 +369,156 @@ export class ProfileAction extends SingletonAction<JsonObject> {
     }
   }
 
+  // Cache: key = "steamId_status" → base64 PNG data URL
+  private trackerImageCache: Map<string, string> = new Map();
+
+  /**
+   * Fetches the full-size Steam avatar URL from the public XML profile endpoint.
+   */
+  private async fetchSteamAvatarUrl(steamId: string): Promise<string | null> {
+    try {
+      const res = await fetch(`https://steamcommunity.com/profiles/${steamId}?xml=1`);
+      if (!res.ok) return null;
+      const xml = await res.text();
+      const match = xml.match(/<avatarFull><!\[CDATA\[(.+?)\]\]><\/avatarFull>/);
+      return match ? match[1] : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Builds a 144×144 PNG data URL with the player's Steam avatar and a
+   * green (online) or red (offline/not_found) border, caching by steamId+status.
+   */
+  private async buildTrackerButtonImage(steamId: string, status: string): Promise<string> {
+    const cacheKey = `${steamId}_${status}`;
+    const cached = this.trackerImageCache.get(cacheKey);
+    if (cached) return cached;
+
+    try {
+      const avatarUrl = await this.fetchSteamAvatarUrl(steamId);
+      if (!avatarUrl) return "";
+
+      const imgRes = await fetch(avatarUrl);
+      if (!imgRes.ok) return "";
+      const imgBuffer = Buffer.from(await imgRes.arrayBuffer());
+
+      // Decode source image — Steam avatars are JPEG but handle PNG too
+      let srcPixels: Buffer;
+      let srcWidth: number;
+      let srcHeight: number;
+
+      if (avatarUrl.toLowerCase().endsWith(".png")) {
+        const png = PNG.sync.read(imgBuffer);
+        srcWidth = png.width;
+        srcHeight = png.height;
+        srcPixels = png.data as unknown as Buffer;
+      } else {
+        const raw = jpegJs.decode(imgBuffer, { useTArray: true });
+        srcWidth = raw.width;
+        srcHeight = raw.height;
+        srcPixels = Buffer.from(raw.data);
+      }
+
+      const keySize = 144;
+      const border = 6;
+      const innerSize = keySize - border * 2; // 132
+
+      const isOnline = status === "online";
+      const [cr, cg, cb] = isOnline ? [0x22, 0xdd, 0x44] : [0xdd, 0x22, 0x22];
+
+      const out = new PNG({ width: keySize, height: keySize });
+
+      // Fill entire canvas with border color
+      for (let i = 0; i < keySize * keySize; i++) {
+        out.data[i * 4 + 0] = cr;
+        out.data[i * 4 + 1] = cg;
+        out.data[i * 4 + 2] = cb;
+        out.data[i * 4 + 3] = 255;
+      }
+
+      // Nearest-neighbor resize and blit avatar into the inner area
+      for (let y = 0; y < innerSize; y++) {
+        const sy = Math.floor(y * srcHeight / innerSize);
+        for (let x = 0; x < innerSize; x++) {
+          const sx = Math.floor(x * srcWidth / innerSize);
+          const srcIdx = (sy * srcWidth + sx) * 4;
+          const dstIdx = ((y + border) * keySize + (x + border)) * 4;
+          out.data[dstIdx + 0] = srcPixels[srcIdx + 0];
+          out.data[dstIdx + 1] = srcPixels[srcIdx + 1];
+          out.data[dstIdx + 2] = srcPixels[srcIdx + 2];
+          out.data[dstIdx + 3] = 255;
+        }
+      }
+
+      const pngBuffer = PNG.sync.write(out);
+      const dataUrl = `data:image/png;base64,${pngBuffer.toString("base64")}`;
+      this.trackerImageCache.set(cacheKey, dataUrl);
+      return dataUrl;
+    } catch (error) {
+      console.error(`Failed to build tracker image for ${steamId}:`, error);
+      return "";
+    }
+  }
+
+  /**
+   * Fetches trackers data and flattens to per-player entries.
+   * Uses baseUrl directly: {baseUrl}/trackers
+   */
+  private async fetchTrackersData(): Promise<TrackerPlayerData[]> {
+    try {
+      const globalSettings: GlobalSettings =
+        await streamDeck.settings.getGlobalSettings();
+      const baseUrl = globalSettings.baseUrl;
+
+      if (!baseUrl) {
+        console.error("Base URL not configured in global settings");
+        return [];
+      }
+
+      const apiUrl = `${baseUrl.replace(/\/$/, "")}/trackers`;
+      console.log(`Fetching trackers from: ${apiUrl}`);
+
+      const apiPassword = globalSettings.apiPassword;
+      const headers: HeadersInit = {};
+      if (apiPassword) {
+        headers["X-API-Key"] = apiPassword;
+      }
+
+      const response = await fetch(apiUrl, { headers });
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = (await response.json()) as TrackersResponse;
+      console.log(`Fetched ${data.trackers.length} trackers`);
+
+      // Flatten trackers → players into individual button entries
+      const playerEntries: TrackerPlayerData[] = [];
+      for (const tracker of data.trackers) {
+        for (const player of tracker.players) {
+          playerEntries.push({
+            id: `${tracker.id}-${player.steamId}`,
+            name: player.name,
+            steamId: player.steamId,
+            trackerName: tracker.name,
+            trackerTitle: tracker.title,
+            playerStatus: player.status,
+            playerTime: player.time,
+            type: "tracker",
+          });
+        }
+      }
+
+      console.log(`Flattened to ${playerEntries.length} tracker player entries`);
+      return playerEntries;
+    } catch (error) {
+      console.error("Error fetching trackers data:", error);
+      return [];
+    }
+  }
+
   /**
    * Fetches data based on the current profile type
    */
@@ -335,6 +531,8 @@ export class ProfileAction extends SingletonAction<JsonObject> {
       return await this.fetchAlarmsData();
     } else if (profileType === "switch_groups") {
       return await this.fetchSwitchGroupsData();
+    } else if (profileType === "trackers") {
+      return await this.fetchTrackersData();
     } else if (profileType === "smart_devices") {
       // Fetch switches, alarms, and switch groups, then combine them
       const [switches, alarms, switchGroups] = await Promise.all([
@@ -473,7 +671,7 @@ export class ProfileAction extends SingletonAction<JsonObject> {
         console.log(
           `Set switch group button ${buttonIndex} title to: ${title} with icon: ${iconPath}`
         );
-      } else {
+      } else if (deviceData.type === 'switch') {
         // Handle switch display
         const switchData = deviceData as SwitchData;
         const statusText = switchData.active ? "On" : "Off";
@@ -487,6 +685,20 @@ export class ProfileAction extends SingletonAction<JsonObject> {
         console.log(
           `Set switch button ${buttonIndex} title to: ${title} with icon: ${iconPath}`
         );
+      } else if (deviceData.type === 'tracker') {
+        const trackerPlayer = deviceData as TrackerPlayerData;
+        const statusLabel = trackerPlayer.playerStatus === "online" ? "Online" : "Offline";
+        const timeLabel = trackerPlayer.playerTime ? trackerPlayer.playerTime : "";
+        const title = `${trackerPlayer.trackerName}\n${trackerPlayer.name}\n${statusLabel}\n${timeLabel}`;
+        await action.setTitle(title);
+        // Fetch and cache Steam avatar with green/red border
+        const imgDataUrl = await this.buildTrackerButtonImage(trackerPlayer.steamId, trackerPlayer.playerStatus);
+        if (imgDataUrl) {
+          await action.setImage(imgDataUrl);
+        } else {
+          await action.setImage("");
+        }
+        console.log(`Set tracker player button ${buttonIndex} title to: ${title}`);
       }
     } else {
       await action.setTitle("");
@@ -641,7 +853,11 @@ export class ProfileAction extends SingletonAction<JsonObject> {
       const deviceData = this.devicesData[deviceIndex];
       
       // Handle device interaction based on type
-      if (deviceData.type === 'alarm') {
+      if (deviceData.type === 'tracker') {
+        // Trackers are read-only, refresh to get latest player data
+        console.log(`Tapped tracker player: ${(deviceData as TrackerPlayerData).name} - Refreshing`);
+        await this.refreshAll();
+      } else if (deviceData.type === 'alarm') {
         // Alarms are read-only, so just refresh the data
         console.log(
           `Tapped alarm: ${(deviceData as AlarmData).name} (ID: ${deviceData.id}) - Refreshing`

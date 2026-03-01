@@ -89,6 +89,23 @@
 			]
 		},
 		{
+			"Name": "Trackers",
+			"UUID": "com.aurum.rust-deck.trackers",
+			"Icon": "imgs/actions/smart_devices/icon",
+			"Tooltip": "Shows player trackers. Opens the tracker profile on press.",
+			"PropertyInspectorPath": "ui/trackers.html",
+			"Controllers": [
+				"Keypad"
+			],
+			"States": [
+				{
+					"Image": "imgs/actions/smart_devices/key",
+					"TitleAlignment": "middle",
+					"Title": "Trackers"
+				}
+			]
+		},
+		{
 			"Name": "Profile Action",
 			"UUID": "com.aurum.rust-deck.profile-action",
 			"Icon": "imgs/actions/profile_action/icon",

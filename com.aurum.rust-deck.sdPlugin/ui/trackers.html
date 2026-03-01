@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Trackers Settings</title>
+    <meta charset="utf-8" />
+    <script src="https://sdpi-components.dev/releases/v3/sdpi-components.js"></script>
+    <script src="global-settings.js" defer></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 16px;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+    </style>
+</head>
+<body>
+    <sdpi-item label="Base URL (Global Setting)">
+        <sdpi-textfield setting="baseUrl" global placeholder="Enter base URL for API (e.g. http://localhost:8074)"></sdpi-textfield>
+    </sdpi-item>
+
+    <sdpi-item label="API Password (Global Setting)">
+        <sdpi-textfield setting="apiPassword" global placeholder="Enter API password for authentication" type="password"></sdpi-textfield>
+    </sdpi-item>
+
+</body>
+</html>

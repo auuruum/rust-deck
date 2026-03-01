@@ -5,6 +5,7 @@ import { ServerInfo } from "./actions/server-info";
 import { PhaseOfDay } from "./actions/phase-of-day";
 import { ProfileAction } from "./actions/profile-action";
 import { SmartDevices } from "./actions/smart-devices";
+import { Trackers } from "./actions/trackers";
 import { JoinServer } from "./actions/join-server";
 import { initializeGlobalSettings, getBaseUrl } from "./settings";
 import { wsClient } from "./websocket";
@@ -39,6 +40,8 @@ streamDeck.actions.registerAction(new ServerInfo());
 streamDeck.actions.registerAction(new PhaseOfDay());
 // Register the smart devices action
 streamDeck.actions.registerAction(new SmartDevices());
+// Register the trackers action
+streamDeck.actions.registerAction(new Trackers());
 // Register the join server action
 streamDeck.actions.registerAction(new JoinServer());
 // Register the profile action
