@@ -162,6 +162,7 @@ export class ProfileAction extends SingletonAction<JsonObject> {
   // Track button press timing for tap vs hold detection
   private buttonPressTimers: Map<string, NodeJS.Timeout> = new Map();
   private buttonPressStartTimes: Map<string, number> = new Map();
+  private navigationButtonPresses: Set<string> = new Set();
   private readonly HOLD_THRESHOLD_MS = 500; // 500ms threshold for hold detection
 
   /**
@@ -374,6 +375,7 @@ export class ProfileAction extends SingletonAction<JsonObject> {
 
   // Cache: key = "steamId_status" → base64 PNG data URL
   private trackerImageCache: Map<string, string> = new Map();
+  private trackerImageRequests: Map<string, Promise<string>> = new Map();
 
   /**
    * Fetches the full-size Steam avatar URL from the public XML profile endpoint.
@@ -395,11 +397,17 @@ export class ProfileAction extends SingletonAction<JsonObject> {
    * green (online) or red (offline/not_found) border, caching by steamId+status.
    */
   private async buildTrackerButtonImage(steamId: string, status: string): Promise<string> {
-    const cacheKey = `${steamId}_${status}`;
-    const cached = this.trackerImageCache.get(cacheKey);
-    if (cached) return cached;
+    if (!steamId) return "";
 
-    try {
+    const cacheKey = `${steamId}_${status}`;
+    if (this.trackerImageCache.has(cacheKey)) {
+      return this.trackerImageCache.get(cacheKey) || "";
+    }
+
+    const pending = this.trackerImageRequests.get(cacheKey);
+    if (pending) return pending;
+
+    const request = (async () => {
       const avatarUrl = await this.fetchSteamAvatarUrl(steamId);
       if (!avatarUrl) return "";
 
@@ -459,9 +467,17 @@ export class ProfileAction extends SingletonAction<JsonObject> {
       const dataUrl = `data:image/png;base64,${pngBuffer.toString("base64")}`;
       this.trackerImageCache.set(cacheKey, dataUrl);
       return dataUrl;
+    })();
+
+    this.trackerImageRequests.set(cacheKey, request);
+    try {
+      return await request;
     } catch (error) {
       console.error(`Failed to build tracker image for ${steamId}:`, error);
+      this.trackerImageCache.set(cacheKey, "");
       return "";
+    } finally {
+      this.trackerImageRequests.delete(cacheKey);
     }
   }
 
@@ -756,12 +772,13 @@ export class ProfileAction extends SingletonAction<JsonObject> {
         const timeLabel = trackerPlayer.playerTime ? trackerPlayer.playerTime : "";
         const title = `${trackerPlayer.trackerName}\n${trackerPlayer.name}\n${statusLabel}\n${timeLabel}`;
         await action.setTitle(title);
-        // Fetch and cache Steam avatar with green/red border
-        const imgDataUrl = await this.buildTrackerButtonImage(trackerPlayer.steamId, trackerPlayer.playerStatus);
-        if (imgDataUrl) {
-          await action.setImage(imgDataUrl);
+        const cacheKey = `${trackerPlayer.steamId}_${trackerPlayer.playerStatus}`;
+        const cachedImage = this.trackerImageCache.get(cacheKey);
+        if (cachedImage !== undefined) {
+          await action.setImage(cachedImage);
         } else {
           await action.setImage("");
+          this.loadTrackerImage(action, buttonIndex, trackerPlayer);
         }
         console.log(`Set tracker player button ${buttonIndex} title to: ${title}`);
       }
@@ -775,9 +792,30 @@ export class ProfileAction extends SingletonAction<JsonObject> {
    * Updates all known buttons without fetching new data
    */
   private async updateAllButtons(): Promise<void> {
-    for (const info of this.knownActions.values()) {
-      await this.updateButton(info.action, info.coords, info.device);
-    }
+    await Promise.all([...this.knownActions.values()].map(info =>
+      this.updateButton(info.action, info.coords, info.device)
+    ));
+  }
+
+  private loadTrackerImage(action: any, buttonIndex: number, trackerPlayer: TrackerPlayerData): void {
+    const expectedActionId = action.id;
+    const expectedPlayerId = trackerPlayer.id;
+
+    this.buildTrackerButtonImage(trackerPlayer.steamId, trackerPlayer.playerStatus)
+      .then(async (imgDataUrl) => {
+        if (!imgDataUrl) return;
+        const known = this.knownActions.get(expectedActionId);
+        if (!known) return;
+
+        const currentIndex =
+          this.currentPage * (this.devicesPerPage - 2) +
+          buttonIndex - (this.currentPage === 0 ? 1 : 0);
+        const currentDevice = this.devicesData[currentIndex];
+        if (!currentDevice || currentDevice.type !== "tracker" || currentDevice.id !== expectedPlayerId) return;
+
+        await action.setImage(imgDataUrl);
+      })
+      .catch(error => console.error("Failed to update tracker image:", error));
   }
 
   /**
@@ -832,6 +870,7 @@ export class ProfileAction extends SingletonAction<JsonObject> {
       this.buttonPressTimers.forEach(timer => clearTimeout(timer));
       this.buttonPressTimers.clear();
       this.buttonPressStartTimes.clear();
+      this.navigationButtonPresses.clear();
     }
   }
 
@@ -847,12 +886,14 @@ export class ProfileAction extends SingletonAction<JsonObject> {
 
     // Back button always first button on first page
     if (buttonIndex === 0 && this.currentPage === 0) {
+      this.navigationButtonPresses.add(buttonKey);
       await streamDeck.profiles.switchToProfile(deviceId, undefined);
       return;
     }
 
     // Page navigation button always last button
     if (buttonIndex === this.devicesPerPage - 1) {
+      this.navigationButtonPresses.add(buttonKey);
       const totalDevices = this.devicesData.length;
       const totalPages = Math.ceil(totalDevices / (this.devicesPerPage - 2));
       this.currentPage = (this.currentPage + 1) % totalPages;
@@ -905,6 +946,11 @@ export class ProfileAction extends SingletonAction<JsonObject> {
     const buttonIndex = this.getButtonIndex(coords, device);
     const buttonKey = `${deviceId}-${buttonIndex}`;
 
+    if (this.navigationButtonPresses.delete(buttonKey)) {
+      this.buttonPressStartTimes.delete(buttonKey);
+      return;
+    }
+
     // Calculate press duration
     const pressStartTime = this.buttonPressStartTimes.get(buttonKey);
     const pressDuration = pressStartTime ? Date.now() - pressStartTime : 0;
@@ -936,6 +982,10 @@ export class ProfileAction extends SingletonAction<JsonObject> {
       if (deviceData.type === 'tracker') {
         // Tap - open Steam profile
         const trackerPlayer = deviceData as TrackerPlayerData;
+        if (!trackerPlayer.steamId) {
+          console.log(`Tapped tracker player: ${trackerPlayer.name} - No Steam ID available`);
+          return;
+        }
         const url = `https://steamcommunity.com/profiles/${trackerPlayer.steamId}`;
         console.log(`Tapped tracker player: ${trackerPlayer.name} - Opening Steam profile: ${url}`);
         await streamDeck.system.openUrl(url);
