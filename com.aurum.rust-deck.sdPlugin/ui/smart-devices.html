@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Server Info Settings</title>
+    <title>Smart Devices Settings</title>
     <meta charset="utf-8" />
     <script src="https://sdpi-components.dev/releases/v3/sdpi-components.js"></script>
     <script src="global-settings.js" defer></script>
@@ -14,12 +14,12 @@
     </style>
 </head>
 <body>
-    <sdpi-item label="Base URL (Global Setting)">
-        <sdpi-textfield setting="baseUrl" global placeholder="Enter base URL for API (e.g. http://localhost:8074)"></sdpi-textfield>
+    <sdpi-item label="Base URL">
+        <sdpi-textfield setting="baseUrl" placeholder="Enter guild URL (e.g. http://localhost:8074/113...)"></sdpi-textfield>
     </sdpi-item>
     
-    <sdpi-item label="API Password (Global Setting)">
-        <sdpi-textfield setting="apiPassword" global placeholder="Enter API password for authentication" type="password"></sdpi-textfield>
+    <sdpi-item label="API Password">
+        <sdpi-textfield setting="apiPassword" placeholder="Enter this guild API password" type="password"></sdpi-textfield>
     </sdpi-item>
     
     <sdpi-item label="Display Options">

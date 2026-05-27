@@ -9,6 +9,7 @@ export class SmartDevices extends SingletonAction {
 	override async onKeyDown(ev: KeyDownEvent<any>): Promise<void> {
 		// Get the settings for this specific action instance
 		const actionSettings = await ev.action.getSettings();
+		const globalSettings = await streamDeck.settings.getGlobalSettings();
 
 		// Prepare the settings to be passed to the profile
 		const profileSettings = {
@@ -20,8 +21,14 @@ export class SmartDevices extends SingletonAction {
 
 		// Set global settings to pass the configuration to the profile action
 		await streamDeck.settings.setGlobalSettings({
-			...(await streamDeck.settings.getGlobalSettings()),
-			...profileSettings
+			...globalSettings,
+			...profileSettings,
+			...(typeof actionSettings.baseUrl === "string" && actionSettings.baseUrl.trim()
+				? { baseUrl: actionSettings.baseUrl.trim() }
+				: {}),
+			...(typeof actionSettings.apiPassword === "string"
+				? { apiPassword: actionSettings.apiPassword }
+				: {})
 		});
 
 		// Switch to the profile
