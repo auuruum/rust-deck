@@ -7,7 +7,7 @@ import { ProfileAction } from "./actions/profile-action";
 import { SmartDevices } from "./actions/smart-devices";
 import { Trackers } from "./actions/trackers";
 import { JoinServer } from "./actions/join-server";
-import { initializeGlobalSettings, getBaseUrl } from "./settings";
+import { initializeGlobalSettings, getApiPassword, getBaseUrl, updateGlobalSettingsCache } from "./settings";
 import { wsClient } from "./websocket";
 
 // We can enable "trace" logging so that all messages between the Stream Deck, and the plugin are recorded. When storing sensitive information (e.g. access tokens, etc.) make sure to disable logging so that the information isn't recorded in the log files.
@@ -15,21 +15,14 @@ streamDeck.logger.setLevel(LogLevel.TRACE);
 
 // Initialize global settings
 initializeGlobalSettings().then(() => {
-    // Initialize WebSocket connection with baseUrl from settings
-    try {
-        const baseUrl = getBaseUrl();
-        if (baseUrl) {
-            // Parse baseUrl to get host for WebSocket connection
-            const urlObj = new URL(baseUrl);
-            const wsUrl = `ws://${urlObj.hostname}:8074`;
-            console.log("Connecting to WebSocket server at:", wsUrl);
-            wsClient.connect(wsUrl);
-        }
-    } catch (error) {
-        console.error("Failed to initialize WebSocket connection:", error);
-    }
+    wsClient.connectFromBaseUrl(getBaseUrl(), getApiPassword());
 }).catch(error => {
     console.error("Failed to initialize global settings:", error);
+});
+
+streamDeck.settings.onDidReceiveGlobalSettings(({ settings }) => {
+    updateGlobalSettingsCache(settings);
+    wsClient.connectFromBaseUrl(getBaseUrl(), getApiPassword());
 });
 
 // Register the time display action

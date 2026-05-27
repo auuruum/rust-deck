@@ -1,8 +1,9 @@
 import { EventEmitter } from "events";
+import WebSocket from "ws";
 
 /**
  * Central WebSocket client for Rust-Deck that auto-reconnects and re-emits
- * server "update" messages to Stream Deck actions.
+ * server update messages to Stream Deck actions.
  */
 export interface UpdateMessage {
   type: "update" | "immediate_update";
@@ -10,20 +11,43 @@ export interface UpdateMessage {
   data: Record<string, unknown>;
 }
 
+interface ConnectionOptions {
+  url: string;
+  guildId: string;
+  endpoints: string[];
+  apiPassword: string;
+}
+
 class WebSocketClient extends EventEmitter {
   private ws: WebSocket | null = null;
   private reconnectTimer: NodeJS.Timeout | null = null;
-  private readonly reconnectDelay = 5000; // 5 s
+  private readonly reconnectDelay = 5000;
   private readonly defaultUrl = "ws://localhost:8074";
   private connected = false;
   private subscribed = false;
+  private options: ConnectionOptions = {
+    url: this.defaultUrl,
+    guildId: "default",
+    endpoints: ["server", "time", "pop", "switches", "alarms", "switchgroups", "trackers"],
+    apiPassword: "",
+  };
 
-  /** Connect to the Rust monitoring WebSocket. */
-  connect(url?: string, guildId = "default", endpoints: string[] = ["time", "pop", "switches", "alarms", "switchgroups"]): void {
+  connect(
+    url?: string,
+    guildId = "default",
+    endpoints: string[] = ["server", "time", "pop", "switches", "alarms", "switchgroups", "trackers"],
+    apiPassword = "",
+  ): void {
     const targetUrl = url?.trim() || this.defaultUrl;
+    const nextOptions = { url: targetUrl, guildId, endpoints, apiPassword };
+
+    if (this.ws && this.options.url !== targetUrl) {
+      this.disconnect();
+    }
+
+    this.options = nextOptions;
 
     if (this.ws) {
-      // Already initialised, avoid duplicate connections.
       return;
     }
 
@@ -31,61 +55,76 @@ class WebSocketClient extends EventEmitter {
       this.ws = new WebSocket(targetUrl);
     } catch (err) {
       console.error("WebSocket initialisation failed:", err);
-      this.scheduleReconnect(url, guildId, endpoints);
+      this.scheduleReconnect();
       return;
     }
 
-    this.ws.onopen = () => {
+    const socket = this.ws;
+
+    socket.on("open", () => {
       this.connected = true;
       this.subscribed = false;
-      // Send subscription request once open.
       try {
-        const subMsg = {
+        socket.send(JSON.stringify({
           type: "subscribe",
           guildId,
           endpoints,
-        };
-        this.ws?.send(JSON.stringify(subMsg));
+          apiPassword,
+        }));
         this.subscribed = true;
+        this.emit("status", { connected: this.connected, subscribed: this.subscribed });
       } catch (err) {
         console.error("Failed to send subscription message:", err);
       }
-    };
+    });
 
-    this.ws.onmessage = (ev: MessageEvent) => {
+    socket.on("message", (data) => {
       let payload: UpdateMessage | null = null;
       try {
-        payload = JSON.parse(ev.data.toString());
+        payload = JSON.parse(data.toString());
       } catch (err) {
         console.error("Invalid WS JSON:", err);
         return;
       }
 
       if (!payload || (payload.type !== "update" && payload.type !== "immediate_update")) {
-        // Only interested in update messages
         return;
       }
 
-      // Emit per-key events (e.g., "time", "switches")
       for (const key of Object.keys(payload.data || {})) {
         this.emit(key, (payload.data as Record<string, unknown>)[key]);
       }
-      // Emit a generic update event with full payload
       this.emit("update", payload.data);
-    };
+    });
 
-    this.ws.onerror = (err: Event) => {
+    socket.on("error", (err: Error) => {
       console.error("WebSocket error:", err);
-    };
+      this.emit("status", { connected: false, subscribed: false });
+    });
 
-    this.ws.onclose = () => {
+    socket.on("close", () => {
+      if (this.ws !== socket) return;
       this.connected = false;
+      this.subscribed = false;
       this.ws = null;
-      this.scheduleReconnect(url, guildId, endpoints);
-    };
+      this.emit("status", { connected: false, subscribed: false });
+      this.scheduleReconnect();
+    });
   }
 
-  /** Close connection and stop reconnection attempts. */
+  connectFromBaseUrl(baseUrl: string, apiPassword = "", guildId = "default"): void {
+    try {
+      const urlObj = new URL(baseUrl || "http://localhost:8074");
+      const protocol = urlObj.protocol === "https:" ? "wss:" : "ws:";
+      const wsUrl = `${protocol}//${urlObj.hostname}:${urlObj.port || "8074"}`;
+      const pathGuildId = urlObj.pathname.split("/").filter(Boolean)[0] || guildId;
+      this.connect(wsUrl, pathGuildId, this.options.endpoints, apiPassword);
+    } catch (error) {
+      console.error("Failed to derive WebSocket URL from base URL:", error);
+      this.connect(undefined, guildId, this.options.endpoints, apiPassword);
+    }
+  }
+
   disconnect(): void {
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
@@ -97,15 +136,14 @@ class WebSocketClient extends EventEmitter {
     }
   }
 
-  private scheduleReconnect(url?: string, guildId: string = "default", endpoints: string[] = ["time", "pop", "switches", "alarms", "switchgroups"]): void {
+  private scheduleReconnect(): void {
     if (this.reconnectTimer) return;
-    console.warn(`WS disconnected – reconnecting in ${this.reconnectDelay} ms…`);
+    console.warn(`WS disconnected - reconnecting in ${this.reconnectDelay} ms...`);
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
-      this.connect(url, guildId, endpoints);
+      this.connect(this.options.url, this.options.guildId, this.options.endpoints, this.options.apiPassword);
     }, this.reconnectDelay);
   }
 }
 
-// Export a singleton instance
 export const wsClient = new WebSocketClient();

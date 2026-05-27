@@ -1,5 +1,6 @@
 import { action, KeyDownEvent, SingletonAction, WillAppearEvent, DidReceiveSettingsEvent, streamDeck, WillDisappearEvent } from "@elgato/streamdeck";
 import { GlobalSettings } from "../settings";
+import { wsClient } from "../websocket";
 
 interface PhaseSettings {
     baseUrl?: string;
@@ -36,6 +37,21 @@ export class PhaseOfDay extends SingletonAction<PhaseSettings> {
 
     constructor() {
         super();
+        wsClient.on("time", async (data: TimeResponse) => {
+            if (!this.currentAction || !data || typeof data.isDay !== "boolean") return;
+
+            const titlePosition = this.lastSettings.titlePosition || DEFAULT_TITLE_POSITION;
+            const phaseText = data.timeTillChange === null ? "Wait" : `${data.timeTillChange}\n${data.isDay ? "Night" : "Day"}`;
+            const finalDisplayText = this.lastSettings.customTitle
+                ? titlePosition === "top"
+                    ? `${this.lastSettings.customTitle}\n${phaseText}`
+                    : `${phaseText}\n${this.lastSettings.customTitle}`
+                : phaseText;
+
+            await this.currentAction.setTitle(finalDisplayText);
+            await this.currentAction.setSettings({ ...this.lastSettings, lastUpdate: phaseText });
+        });
+
         this.loadGlobalSettings().then(() => {
             console.log('Global settings loaded in constructor:', this.globalSettings);
         });

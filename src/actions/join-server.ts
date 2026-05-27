@@ -11,6 +11,7 @@ import {
 } from "@elgato/streamdeck";
 import { GlobalSettings } from "../settings";
 import { exec } from "child_process";
+import { wsClient } from "../websocket";
 
 export interface ServerResponse {
   activeServer: string;
@@ -68,6 +69,17 @@ export class JoinServer extends SingletonAction {
 
   constructor() {
     super();
+    wsClient.on("server", async (data: ServerResponse) => {
+      if (!this.currentAction || !data?.server?.title) return;
+
+      try {
+        this.serverData = data;
+        await (this.currentAction as any).setTitle(this.processServerTitle(data.server.title));
+      } catch (error) {
+        console.error("Failed to apply WebSocket server data:", error);
+      }
+    });
+
     // Load initial global settings
     this.loadGlobalSettings().then(() => {
       console.log(

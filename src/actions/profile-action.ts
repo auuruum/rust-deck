@@ -141,9 +141,11 @@ export class ProfileAction extends SingletonAction<JsonObject> {
     super();
     // Attach WebSocket update listener to refresh devices data instantly
     import("../websocket").then(({ wsClient }) => {
-      wsClient.on("update", async () => {
+      wsClient.on("update", async (data: Record<string, unknown>) => {
         try {
-          await this.refreshAll(true);
+          if (!(await this.applyBridgeUpdate(data))) {
+            await this.refreshAll(true);
+          }
         } catch (err) {
           console.error("Failed to refresh after WS update", err);
         }
@@ -496,22 +498,7 @@ export class ProfileAction extends SingletonAction<JsonObject> {
       console.log(`Fetched ${data.trackers.length} trackers`);
 
       // Flatten trackers → players into individual button entries
-      const playerEntries: TrackerPlayerData[] = [];
-      for (const tracker of data.trackers) {
-        for (const player of tracker.players) {
-          playerEntries.push({
-            id: `${tracker.id}-${player.steamId}`,
-            name: player.name,
-            steamId: player.steamId,
-            battlemetricsId: player.battlemetricsId,
-            trackerName: tracker.name,
-            trackerTitle: tracker.title,
-            playerStatus: player.status,
-            playerTime: player.time,
-            type: "tracker",
-          });
-        }
-      }
+      const playerEntries = this.flattenTrackers(data);
 
       console.log(`Flattened to ${playerEntries.length} tracker player entries`);
       return playerEntries;
@@ -560,6 +547,82 @@ export class ProfileAction extends SingletonAction<JsonObject> {
     } else {
       return await this.fetchSwitchesData();
     }
+  }
+
+  private flattenTrackers(data: TrackersResponse): TrackerPlayerData[] {
+    const playerEntries: TrackerPlayerData[] = [];
+    for (const tracker of data.trackers) {
+      for (const player of tracker.players) {
+        playerEntries.push({
+          id: `${tracker.id}-${player.steamId}`,
+          name: player.name,
+          steamId: player.steamId,
+          battlemetricsId: player.battlemetricsId,
+          trackerName: tracker.name,
+          trackerTitle: tracker.title,
+          playerStatus: player.status,
+          playerTime: player.time,
+          type: "tracker",
+        });
+      }
+    }
+
+    return playerEntries;
+  }
+
+  private async applyBridgeUpdate(data: Record<string, unknown>): Promise<boolean> {
+    if (!data || this.knownActions.size === 0) return false;
+
+    const globalSettings: GlobalSettings =
+      await streamDeck.settings.getGlobalSettings();
+    const profileType = globalSettings.profileType || "smart_switches";
+
+    const switchResponse = data.switches as SwitchesResponse | undefined;
+    const alarmResponse = data.alarms as AlarmsResponse | undefined;
+    const groupResponse = data.switchgroups as SwitchGroupsResponse | undefined;
+    const trackerResponse = data.trackers as TrackersResponse | undefined;
+
+    const switches = switchResponse?.switches
+      ?.filter((switchData) => switchData.reachable)
+      .map((switchData) => ({ ...switchData, type: 'switch' as const }));
+    const alarms = alarmResponse?.alarms
+      ?.filter((alarmData) => alarmData.reachable)
+      .map((alarmData) => ({ ...alarmData, type: 'alarm' as const }));
+    const switchGroups = groupResponse?.switchGroups
+      ?.map((groupData) => ({ ...groupData, type: 'switchgroup' as const }));
+
+    if (profileType === "smart_alarms") {
+      if (!alarms) return false;
+      this.devicesData = globalSettings.hideAlarms ? [] : alarms;
+    } else if (profileType === "switch_groups") {
+      if (!switchGroups) return false;
+      this.devicesData = globalSettings.hideSwitchesGroups ? [] : switchGroups;
+    } else if (profileType === "trackers") {
+      if (!trackerResponse?.trackers) return false;
+      this.devicesData = this.flattenTrackers(trackerResponse);
+    } else if (profileType === "smart_devices") {
+      if (!switches || !alarms || !switchGroups) return false;
+      this.devicesData = [
+        ...(globalSettings.hideSwitches ? [] : switches),
+        ...(globalSettings.hideAlarms ? [] : alarms),
+        ...(globalSettings.hideSwitchesGroups ? [] : switchGroups)
+      ];
+      this.devicesData.sort((a, b) => {
+        const typeOrder = { 'switch': 0, 'alarm': 1, 'switchgroup': 2, 'tracker': 3 };
+        if (a.type !== b.type) return typeOrder[a.type] - typeOrder[b.type];
+        return a.name.localeCompare(b.name);
+      });
+    } else {
+      if (!switches) return false;
+      this.devicesData = globalSettings.hideSwitches ? [] : switches;
+    }
+
+    const totalPages = Math.ceil(this.devicesData.length / (this.devicesPerPage - 2));
+    if (this.currentPage >= totalPages) {
+      this.currentPage = Math.max(0, totalPages - 1);
+    }
+    await this.updateAllButtons();
+    return true;
   }
 
   /**
@@ -751,7 +814,7 @@ export class ProfileAction extends SingletonAction<JsonObject> {
     await this.updateButton(ev.action, coords, ev.action.device);
 
     if (!this.interval) {
-      this.interval = setInterval(async () => await this.refreshAll(), 500);
+      this.interval = setInterval(async () => await this.refreshAll(), 10000);
     }
   }
 
@@ -977,9 +1040,15 @@ export class ProfileAction extends SingletonAction<JsonObject> {
       const action = turnOn ? "on" : "off";
       const apiUrl = `${baseUrl.replace(/\/$/, "")}/switchgroups/${groupId}/${action}`;
 
+      const apiPassword = globalSettings.apiPassword;
+      const headers: HeadersInit = { "Content-Type": "application/json" };
+      if (apiPassword) {
+        headers["X-API-Key"] = apiPassword;
+      }
+
       const response = await fetch(apiUrl, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
       });
 
       if (!response.ok) {

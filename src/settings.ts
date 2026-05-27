@@ -43,6 +43,12 @@ export function getApiPassword(): string {
     return globalSettings.apiPassword || "";
 }
 
+export function updateGlobalSettingsCache(settings: unknown): void {
+    if (settings && typeof settings === "object") {
+        globalSettings = { ...defaultSettings, ...(settings as GlobalSettings) };
+    }
+}
+
 export function createAuthHeaders(): HeadersInit {
     const apiPassword = getApiPassword();
     const headers: HeadersInit = {

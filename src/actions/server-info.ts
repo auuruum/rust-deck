@@ -10,6 +10,7 @@ import {
     Action
 } from "@elgato/streamdeck";
 import { GlobalSettings } from "../settings";
+import { wsClient } from "../websocket";
 
 export interface ServerInfoResponse {
     currentPlayers: number;
@@ -41,6 +42,15 @@ export class ServerInfo extends SingletonAction {
 
     constructor() {
         super();
+        wsClient.on("pop", async (data: ServerInfoResponse) => {
+            if (!this.currentAction || !data) return;
+            try {
+                await this.setServerInfoTitle(data);
+            } catch (error) {
+                console.error("Failed to apply WebSocket server info:", error);
+            }
+        });
+
         // Load initial global settings
         this.loadGlobalSettings().then(() => {
             console.log('Global settings loaded in constructor:', this.globalSettings);
@@ -204,20 +214,8 @@ export class ServerInfo extends SingletonAction {
                 throw new Error('Invalid response format');
             }
 
-            console.log(`Server info received: ${data.currentPlayers}/${data.maxPlayers} players, queue: ${data.queuedPlayers}`);            // Set the button title to show player counts            
-            let title = `${data.currentPlayers}/${data.maxPlayers}`;
-            if (data.queuedPlayers > 0) {
-                title = `${title}\n(${data.queuedPlayers})`;
-            }
-            
-            if (this.currentAction) {
-                try {
-                    await (this.currentAction as any).setTitle(title);
-                } catch (error) {
-                    console.error('Failed to set title:', error);
-                    await (this.currentAction as any).setTitle("Error");
-                }
-            }
+            console.log(`Server info received: ${data.currentPlayers}/${data.maxPlayers} players, queue: ${data.queuedPlayers}`);
+            await this.setServerInfoTitle(data);
         } catch (error) {
             console.error('Error updating server info:', error);
             if (this.currentAction) {
@@ -227,6 +225,17 @@ export class ServerInfo extends SingletonAction {
                     console.error('Failed to set error title:', setError);
                 }
             }
+        }
+    }
+
+    private async setServerInfoTitle(data: ServerInfoResponse): Promise<void> {
+        let title = `${data.currentPlayers}/${data.maxPlayers}`;
+        if (data.queuedPlayers > 0) {
+            title = `${title}\n(${data.queuedPlayers})`;
+        }
+
+        if (this.currentAction) {
+            await (this.currentAction as any).setTitle(title);
         }
     }
 }

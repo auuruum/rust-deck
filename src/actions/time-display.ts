@@ -51,9 +51,16 @@ export class TimeDisplay extends SingletonAction<TimeSettings> {
                         displayText = data.sunriseFormatted ?? data.currentTimeFormatted;
                     } else if (displayFormat === "sunset") {
                         displayText = data.sunsetFormatted ?? data.currentTimeFormatted;
+                    } else if (displayFormat === "day_length" && typeof data.dayLengthMinutes === "number") {
+                        displayText = `${data.dayLengthMinutes.toFixed(1)}m`;
                     }
                     if (displayText) {
-                        this.currentAction.setTitle(displayText, Target.HardwareAndSoftware, titlePosition === "bottom" ? 1 : 0);
+                        const finalDisplayText = this.lastSettings.customTitle
+                            ? titlePosition === "top"
+                                ? `${this.lastSettings.customTitle}\n${displayText}`
+                                : `${displayText}\n${this.lastSettings.customTitle}`
+                            : displayText;
+                        this.currentAction.setTitle(finalDisplayText, Target.HardwareAndSoftware, titlePosition === "bottom" ? 1 : 0);
                     }
                 }
             });
