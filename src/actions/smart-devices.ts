@@ -23,12 +23,6 @@ export class SmartDevices extends SingletonAction {
 		await streamDeck.settings.setGlobalSettings({
 			...globalSettings,
 			...profileSettings,
-			...(typeof actionSettings.baseUrl === "string" && actionSettings.baseUrl.trim()
-				? { baseUrl: actionSettings.baseUrl.trim() }
-				: {}),
-			...(typeof actionSettings.apiPassword === "string"
-				? { apiPassword: actionSettings.apiPassword }
-				: {})
 		});
 
 		// Switch to the profile
