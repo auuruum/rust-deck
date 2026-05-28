@@ -29,11 +29,13 @@ export interface ServerInfoResponse {
 interface ServerInfoSettings extends JsonObject {
     serverPath?: string;
     updateInterval?: string;
+    showPopulationTrend?: boolean;
     [key: string]: string | number | boolean | null | undefined;
 }
 
 const DEFAULT_SERVER_PATH = "/pop";
 const DEFAULT_UPDATE_INTERVAL = "30";
+const DEFAULT_SHOW_POPULATION_TREND = false;
 
 export function getPopulationTrendSymbol(data: Pick<ServerInfoResponse, "playerTrend" | "populationTrend">): string {
     if (data.playerTrend?.symbol) return data.playerTrend.symbol;
@@ -45,8 +47,8 @@ export function getPopulationTrendSymbol(data: Pick<ServerInfoResponse, "playerT
     return "";
 }
 
-export function formatServerInfoTitle(data: ServerInfoResponse): string {
-    const trendSymbol = getPopulationTrendSymbol(data);
+export function formatServerInfoTitle(data: ServerInfoResponse, showPopulationTrend = false): string {
+    const trendSymbol = showPopulationTrend ? getPopulationTrendSymbol(data) : "";
     let title = `${data.currentPlayers}/${data.maxPlayers}${trendSymbol ? ` ${trendSymbol}` : ""}`;
 
     if (data.queuedPlayers > 0) {
@@ -60,7 +62,8 @@ export function formatServerInfoTitle(data: ServerInfoResponse): string {
 export class ServerInfo extends SingletonAction {
     private settings: ServerInfoSettings = {
         serverPath: DEFAULT_SERVER_PATH,
-        updateInterval: DEFAULT_UPDATE_INTERVAL
+        updateInterval: DEFAULT_UPDATE_INTERVAL,
+        showPopulationTrend: DEFAULT_SHOW_POPULATION_TREND
     };
     
     private updateInterval: NodeJS.Timeout | null = null;
@@ -122,7 +125,8 @@ export class ServerInfo extends SingletonAction {
         const newSettings = {
             ...currentSettings,
             serverPath: currentSettings.serverPath || DEFAULT_SERVER_PATH,
-            updateInterval: currentSettings.updateInterval || DEFAULT_UPDATE_INTERVAL
+            updateInterval: currentSettings.updateInterval || DEFAULT_UPDATE_INTERVAL,
+            showPopulationTrend: currentSettings.showPopulationTrend === true
         };
 
         // Save settings
@@ -258,7 +262,7 @@ export class ServerInfo extends SingletonAction {
     }
 
     private async setServerInfoTitle(data: ServerInfoResponse): Promise<void> {
-        const title = formatServerInfoTitle(data);
+        const title = formatServerInfoTitle(data, this.settings.showPopulationTrend === true);
 
         if (this.currentAction) {
             await (this.currentAction as any).setTitle(title);
