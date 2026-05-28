@@ -16,6 +16,14 @@ export interface ServerInfoResponse {
     currentPlayers: number;
     maxPlayers: number;
     queuedPlayers: number;
+    playerTrend?: {
+        trend?: "growing" | "falling" | "stable" | string;
+        delta?: number;
+        symbol?: string;
+        windowMinutes?: number;
+        sampleCount?: number;
+    } | null;
+    populationTrend?: "growing" | "falling" | "stable" | string;
 }
 
 interface ServerInfoSettings extends JsonObject {
@@ -26,6 +34,27 @@ interface ServerInfoSettings extends JsonObject {
 
 const DEFAULT_SERVER_PATH = "/pop";
 const DEFAULT_UPDATE_INTERVAL = "30";
+
+export function getPopulationTrendSymbol(data: Pick<ServerInfoResponse, "playerTrend" | "populationTrend">): string {
+    if (data.playerTrend?.symbol) return data.playerTrend.symbol;
+
+    const trend = data.playerTrend?.trend || data.populationTrend;
+    if (trend === "growing") return "↗";
+    if (trend === "falling") return "↘";
+    if (trend === "stable") return "→";
+    return "";
+}
+
+export function formatServerInfoTitle(data: ServerInfoResponse): string {
+    const trendSymbol = getPopulationTrendSymbol(data);
+    let title = `${data.currentPlayers}/${data.maxPlayers}${trendSymbol ? ` ${trendSymbol}` : ""}`;
+
+    if (data.queuedPlayers > 0) {
+        title = `${title}\n(${data.queuedPlayers})`;
+    }
+
+    return title;
+}
 
 @action({ UUID: "com.aurum.rust-deck.server-info" })
 export class ServerInfo extends SingletonAction {
@@ -229,10 +258,7 @@ export class ServerInfo extends SingletonAction {
     }
 
     private async setServerInfoTitle(data: ServerInfoResponse): Promise<void> {
-        let title = `${data.currentPlayers}/${data.maxPlayers}`;
-        if (data.queuedPlayers > 0) {
-            title = `${title}\n(${data.queuedPlayers})`;
-        }
+        const title = formatServerInfoTitle(data);
 
         if (this.currentAction) {
             await (this.currentAction as any).setTitle(title);
