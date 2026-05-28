@@ -7,7 +7,6 @@ interface TimeSettings {
     displayFormat?: string;
     customTitle?: string;
     titlePosition?: string;
-    updateInterval?: string;
     [key: string]: string | undefined;
 }
 
@@ -27,12 +26,10 @@ interface TimeResponse {
 const DEFAULT_BASE_URL = "http://localhost:8074";
 const DEFAULT_DISPLAY_FORMAT = "time";
 const DEFAULT_TITLE_POSITION = "top";
-const DEFAULT_UPDATE_INTERVAL = "60";
 
 @action({ UUID: "com.aurum.rust-deck.time" })
 export class TimeDisplay extends SingletonAction<TimeSettings> {
     private globalSettings: GlobalSettings = { baseUrl: DEFAULT_BASE_URL };
-    private updateInterval: NodeJS.Timeout | null = null;
     private currentAction: any = null;
     private lastSettings: TimeSettings = {};
 
@@ -42,26 +39,7 @@ export class TimeDisplay extends SingletonAction<TimeSettings> {
         import("../websocket").then(({ wsClient }) => {
             wsClient.on("time", (data: any) => {
                 if (this.currentAction && data && typeof data.currentTimeFormatted === "string") {
-                    const displayFormat = this.lastSettings.displayFormat || DEFAULT_DISPLAY_FORMAT;
-                    const titlePosition = this.lastSettings.titlePosition || DEFAULT_TITLE_POSITION;
-                    let displayText = "";
-                    if (displayFormat === "time") {
-                        displayText = data.currentTimeFormatted;
-                    } else if (displayFormat === "sunrise") {
-                        displayText = data.sunriseFormatted ?? data.currentTimeFormatted;
-                    } else if (displayFormat === "sunset") {
-                        displayText = data.sunsetFormatted ?? data.currentTimeFormatted;
-                    } else if (displayFormat === "day_length" && typeof data.dayLengthMinutes === "number") {
-                        displayText = `${data.dayLengthMinutes.toFixed(1)}m`;
-                    }
-                    if (displayText) {
-                        const finalDisplayText = this.lastSettings.customTitle
-                            ? titlePosition === "top"
-                                ? `${this.lastSettings.customTitle}\n${displayText}`
-                                : `${displayText}\n${this.lastSettings.customTitle}`
-                            : displayText;
-                        this.currentAction.setTitle(finalDisplayText, Target.HardwareAndSoftware, titlePosition === "bottom" ? 1 : 0);
-                    }
+                    this.applyTimeData(this.currentAction, data as TimeResponse, this.lastSettings);
                 }
             });
         }).catch(err => {
@@ -104,39 +82,13 @@ export class TimeDisplay extends SingletonAction<TimeSettings> {
         }
     }
 
-    private startUpdateInterval(action: any, settings: TimeSettings) {
-        // Clear any existing interval
-        this.stopUpdateInterval();
-        
-        // Get interval in milliseconds (default to 60 seconds)
-        const interval = parseInt(settings.updateInterval || DEFAULT_UPDATE_INTERVAL) * 1000;
-        if (isNaN(interval) || interval <= 0) {
-            console.error('Invalid update interval:', settings.updateInterval);
-            return;
-        }
-
-        console.log(`Starting update interval for time display: ${interval}ms`);
-
-        // Store the current action and settings
+    private startRealtime(action: any, settings: TimeSettings) {
         this.currentAction = action;
         this.lastSettings = settings;
-
-        // Fetch immediately
         this.fetchTime(action, settings);
-        
-        // Set up the interval
-        this.updateInterval = setInterval(() => {
-            if (this.currentAction) {
-                this.fetchTime(this.currentAction, settings);
-            }
-        }, interval);
     }
 
-    private stopUpdateInterval() {
-        if (this.updateInterval) {
-            clearInterval(this.updateInterval);
-            this.updateInterval = null;
-        }
+    private stopRealtime() {
         this.currentAction = null;
     }
 
@@ -153,11 +105,6 @@ export class TimeDisplay extends SingletonAction<TimeSettings> {
             newSettings.titlePosition = DEFAULT_TITLE_POSITION;
             settingsChanged = true;
         }
-        if (!currentSettings.updateInterval) {
-            newSettings.updateInterval = DEFAULT_UPDATE_INTERVAL;
-            settingsChanged = true;
-        }
-        
         if (settingsChanged) {
             await ev.action.setSettings(newSettings);
         }
@@ -166,12 +113,12 @@ export class TimeDisplay extends SingletonAction<TimeSettings> {
         await this.waitForGlobalSettings();
         
         console.log("Time display will appear with settings:", newSettings);
-        this.startUpdateInterval(ev.action, newSettings);
+        this.startRealtime(ev.action, newSettings);
     }
 
     override async onWillDisappear(ev: WillDisappearEvent<TimeSettings>): Promise<void> {
         console.log("Time display will disappear");
-        this.stopUpdateInterval();
+        this.stopRealtime();
     }
 
     override async onKeyDown(ev: KeyDownEvent<TimeSettings>): Promise<void> {
@@ -181,8 +128,39 @@ export class TimeDisplay extends SingletonAction<TimeSettings> {
 
     override onDidReceiveSettings(ev: DidReceiveSettingsEvent<TimeSettings>): void {
         console.log("Time display did receive settings:", ev.payload.settings);
-        // Restart the update interval with new settings
-        this.startUpdateInterval(ev.action, ev.payload.settings);
+        this.startRealtime(ev.action, ev.payload.settings);
+    }
+
+    private async applyTimeData(action: any, data: TimeResponse, settings: TimeSettings): Promise<void> {
+        const displayFormat = settings.displayFormat || DEFAULT_DISPLAY_FORMAT;
+        const titlePosition = settings.titlePosition || DEFAULT_TITLE_POSITION;
+        let displayText = "";
+
+        switch (displayFormat) {
+            case "time":
+                displayText = data.currentTimeFormatted;
+                break;
+            case "sunrise":
+                displayText = data.sunriseFormatted;
+                break;
+            case "sunset":
+                displayText = data.sunsetFormatted;
+                break;
+            case "day_length":
+                displayText = `${data.dayLengthMinutes.toFixed(1)}m`;
+                break;
+            default:
+                displayText = data.currentTimeFormatted;
+        }
+
+        const finalDisplayText = settings.customTitle
+            ? titlePosition === "top"
+                ? `${settings.customTitle}\n${displayText}`
+                : `${displayText}\n${settings.customTitle}`
+            : displayText;
+
+        await action.setTitle(finalDisplayText, Target.HardwareAndSoftware, titlePosition === "bottom" ? 1 : 0);
+        await action.setSettings({ ...settings, lastUpdate: displayText });
     }
 
     private async fetchTime(action: any, settings: TimeSettings): Promise<void> {
@@ -192,11 +170,6 @@ export class TimeDisplay extends SingletonAction<TimeSettings> {
                            (settings.baseUrl && settings.baseUrl.trim() ? settings.baseUrl.trim() : DEFAULT_BASE_URL);
             
             console.log('Using base URL:', baseUrl);
-            const displayFormat = settings.displayFormat || DEFAULT_DISPLAY_FORMAT;
-            const titlePosition = settings.titlePosition || DEFAULT_TITLE_POSITION;
-            console.log("Using display format:", displayFormat);
-            console.log("Using title position:", titlePosition);
-            
             if (!baseUrl) {
                 console.error("Base URL not configured");
                 await action.setTitle("No URL");
@@ -230,35 +203,7 @@ export class TimeDisplay extends SingletonAction<TimeSettings> {
                     const data = JSON.parse(text) as TimeResponse;
                     console.log("Parsed time data:", data);
                     
-                    let displayText = "";
-                    switch (displayFormat) {
-                        case "time":
-                            displayText = data.currentTimeFormatted;
-                            break;
-                        case "sunrise":
-                            displayText = data.sunriseFormatted;
-                            break;
-                        case "sunset":
-                            displayText = data.sunsetFormatted;
-                            break;
-                        case "day_length":
-                            displayText = `${data.dayLengthMinutes.toFixed(1)}m`;
-                            break;
-                        default:
-                            displayText = data.currentTimeFormatted;
-                    }
-                    
-                    // Combine custom title with display text based on position
-                    const finalDisplayText = settings.customTitle 
-                        ? titlePosition === "top"
-                            ? `${settings.customTitle}\n${displayText}`
-                            : `${displayText}\n${settings.customTitle}`
-                        : displayText;
-                    
-                    console.log("Setting title to:", finalDisplayText);
-                    await action.setTitle(finalDisplayText);
-                    // Only update lastUpdate, do not overwrite displayFormat here if it was just set
-                    await action.setSettings({ ...settings, lastUpdate: displayText });
+                    await this.applyTimeData(action, data, settings);
                 } catch (parseError) {
                     console.error("Failed to parse JSON response:", parseError);
                     console.error("Raw response was:", text);

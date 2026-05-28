@@ -155,7 +155,6 @@ export class ProfileAction extends SingletonAction<JsonObject> {
     });
   }
   private devicesData: DeviceData[] = [];
-  private interval: NodeJS.Timeout | null = null;
   private knownActions: Map<string, { action: any; coords: any; device: any }> =
     new Map();
   
@@ -850,10 +849,6 @@ export class ProfileAction extends SingletonAction<JsonObject> {
     }
 
     await this.updateButton(ev.action, coords, ev.action.device);
-
-    if (!this.interval) {
-      this.interval = setInterval(async () => await this.refreshAll(), 10000);
-    }
   }
 
   override async onWillDisappear(
@@ -861,9 +856,7 @@ export class ProfileAction extends SingletonAction<JsonObject> {
   ): Promise<void> {
     this.knownActions.delete(ev.action.id);
 
-    if (this.knownActions.size === 0 && this.interval) {
-      clearInterval(this.interval);
-      this.interval = null;
+    if (this.knownActions.size === 0) {
       this.devicesData = [];
       
       // Clean up any remaining timers

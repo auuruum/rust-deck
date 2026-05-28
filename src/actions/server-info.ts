@@ -28,13 +28,11 @@ export interface ServerInfoResponse {
 
 interface ServerInfoSettings extends JsonObject {
     serverPath?: string;
-    updateInterval?: string;
     showPopulationTrend?: boolean;
     [key: string]: string | number | boolean | null | undefined;
 }
 
 const DEFAULT_SERVER_PATH = "/pop";
-const DEFAULT_UPDATE_INTERVAL = "30";
 const DEFAULT_SHOW_POPULATION_TREND = false;
 
 export function getPopulationTrendSymbol(data: Pick<ServerInfoResponse, "playerTrend" | "populationTrend">): string {
@@ -62,11 +60,9 @@ export function formatServerInfoTitle(data: ServerInfoResponse, showPopulationTr
 export class ServerInfo extends SingletonAction {
     private settings: ServerInfoSettings = {
         serverPath: DEFAULT_SERVER_PATH,
-        updateInterval: DEFAULT_UPDATE_INTERVAL,
         showPopulationTrend: DEFAULT_SHOW_POPULATION_TREND
     };
     
-    private updateInterval: NodeJS.Timeout | null = null;
     private currentAction: Action | null = null;
     private globalSettings: GlobalSettings = { baseUrl: "http://localhost:8074" };
     private lastSettings: ServerInfoSettings | null = null;
@@ -125,7 +121,6 @@ export class ServerInfo extends SingletonAction {
         const newSettings = {
             ...currentSettings,
             serverPath: currentSettings.serverPath || DEFAULT_SERVER_PATH,
-            updateInterval: currentSettings.updateInterval || DEFAULT_UPDATE_INTERVAL,
             showPopulationTrend: currentSettings.showPopulationTrend === true
         };
 
@@ -146,14 +141,12 @@ export class ServerInfo extends SingletonAction {
         
         console.log("Server Info button appeared with settings:", this.settings);
         
-        // Start periodic updates
-        this.startUpdateInterval();
+        this.updateServerInfo();
     }
 
     override onWillDisappear(ev: WillDisappearEvent) {
-        console.log("Server Info button disappeared, stopping updates...");
-        // Clean up interval when button disappears
-        this.stopUpdateInterval();
+        console.log("Server Info button disappeared");
+        this.currentAction = null;
     }
 
     override onKeyDown(ev: KeyDownEvent<JsonObject>) {
@@ -166,37 +159,7 @@ export class ServerInfo extends SingletonAction {
         console.log("Settings received:", ev.payload.settings);
         this.settings = ev.payload.settings;
         this.lastSettings = ev.payload.settings;
-        // Restart the update interval with new settings
-        this.startUpdateInterval();
-    }
-
-    private startUpdateInterval() {
-        // Clear any existing interval
-        this.stopUpdateInterval();
-        
-        // Get interval in milliseconds
-        const interval = parseInt(this.settings.updateInterval || DEFAULT_UPDATE_INTERVAL) * 1000;
-        if (isNaN(interval) || interval <= 0) {
-            console.error('Invalid update interval:', this.settings.updateInterval);
-            return;
-        }
-
-        console.log(`Starting update interval for server info: ${interval}ms`);
-
-        // Fetch immediately
         this.updateServerInfo();
-        
-        // Set up the new interval
-        this.updateInterval = setInterval(() => {
-            this.updateServerInfo();
-        }, interval);
-    }
-
-    private stopUpdateInterval() {
-        if (this.updateInterval) {
-            clearInterval(this.updateInterval);
-            this.updateInterval = null;
-        }
     }
 
     private getServerUrl(): string {

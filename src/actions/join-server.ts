@@ -41,14 +41,12 @@ export interface ServerResponse {
 
 interface JoinServerSettings extends JsonObject {
   serverEndpoint?: string;
-  updateInterval?: string;
   maxTitleLength?: string; // New setting for title length control
   useMultiLine?: boolean; // New setting for multi-line support
   [key: string]: string | number | boolean | null | undefined;
 }
 
 const DEFAULT_SERVER_ENDPOINT = "";
-const DEFAULT_UPDATE_INTERVAL = "5"; // 5 seconds as requested
 const DEFAULT_MAX_TITLE_LENGTH = "12";
 const DEFAULT_USE_MULTILINE = false;
 
@@ -56,12 +54,10 @@ const DEFAULT_USE_MULTILINE = false;
 export class JoinServer extends SingletonAction {
   private settings: JoinServerSettings = {
     serverEndpoint: DEFAULT_SERVER_ENDPOINT,
-    updateInterval: DEFAULT_UPDATE_INTERVAL,
     maxTitleLength: DEFAULT_MAX_TITLE_LENGTH,
     useMultiLine: DEFAULT_USE_MULTILINE,
   };
 
-  private updateInterval: NodeJS.Timeout | null = null;
   private currentAction: Action | null = null;
   private globalSettings: GlobalSettings = { baseUrl: "http://localhost:8074" };
   private lastSettings: JoinServerSettings | null = null;
@@ -261,7 +257,6 @@ export class JoinServer extends SingletonAction {
     const newSettings = {
       ...currentSettings,
       serverEndpoint: currentSettings.serverEndpoint || DEFAULT_SERVER_ENDPOINT,
-      updateInterval: currentSettings.updateInterval || DEFAULT_UPDATE_INTERVAL,
       maxTitleLength: currentSettings.maxTitleLength || DEFAULT_MAX_TITLE_LENGTH,
       useMultiLine: currentSettings.useMultiLine !== undefined ? currentSettings.useMultiLine : DEFAULT_USE_MULTILINE,
     };
@@ -288,14 +283,12 @@ export class JoinServer extends SingletonAction {
 
     console.log("Join Server button appeared with settings:", this.settings);
 
-    // Start periodic updates
-    this.startUpdateInterval();
+    this.updateServerInfo();
   }
 
   override onWillDisappear(ev: WillDisappearEvent) {
-    console.log("Join Server button disappeared, stopping updates...");
-    // Clean up interval when button disappears
-    this.stopUpdateInterval();
+    console.log("Join Server button disappeared");
+    this.currentAction = null;
   }
 
   override async onKeyDown(ev: KeyDownEvent<JsonObject>) {
@@ -340,38 +333,7 @@ export class JoinServer extends SingletonAction {
     console.log("Settings received:", ev.payload.settings);
     this.settings = ev.payload.settings;
     this.lastSettings = ev.payload.settings;
-    // Restart the update interval with new settings
-    this.startUpdateInterval();
-  }
-
-  private startUpdateInterval() {
-    // Clear any existing interval
-    this.stopUpdateInterval();
-
-    // Get interval in milliseconds
-    const interval =
-      parseInt(this.settings.updateInterval || DEFAULT_UPDATE_INTERVAL) * 1000;
-    if (isNaN(interval) || interval <= 0) {
-      console.error("Invalid update interval:", this.settings.updateInterval);
-      return;
-    }
-
-    console.log(`Starting update interval for join server: ${interval}ms`);
-
-    // Fetch immediately
     this.updateServerInfo();
-
-    // Set up the new interval
-    this.updateInterval = setInterval(() => {
-      this.updateServerInfo();
-    }, interval);
-  }
-
-  private stopUpdateInterval() {
-    if (this.updateInterval) {
-      clearInterval(this.updateInterval);
-      this.updateInterval = null;
-    }
   }
 
   private async updateServerInfo() {

@@ -7,7 +7,6 @@ interface PhaseSettings {
     lastUpdate?: string;
     customTitle?: string;
     titlePosition?: string;
-    updateInterval?: string;
     [key: string]: string | undefined;
 }
 
@@ -26,12 +25,10 @@ interface TimeResponse {
 
 const DEFAULT_BASE_URL = "http://localhost:8074";
 const DEFAULT_TITLE_POSITION = "top";
-const DEFAULT_UPDATE_INTERVAL = "30";
 
 @action({ UUID: "com.aurum.rust-deck.phase-of-day" })
 export class PhaseOfDay extends SingletonAction<PhaseSettings> {
     private globalSettings: GlobalSettings = { baseUrl: DEFAULT_BASE_URL };
-    private updateInterval: NodeJS.Timeout | null = null;
     private currentAction: any = null;
     private lastSettings: PhaseSettings = {};
 
@@ -39,17 +36,7 @@ export class PhaseOfDay extends SingletonAction<PhaseSettings> {
         super();
         wsClient.on("time", async (data: TimeResponse) => {
             if (!this.currentAction || !data || typeof data.isDay !== "boolean") return;
-
-            const titlePosition = this.lastSettings.titlePosition || DEFAULT_TITLE_POSITION;
-            const phaseText = data.timeTillChange === null ? "Wait" : `${data.timeTillChange}\n${data.isDay ? "Night" : "Day"}`;
-            const finalDisplayText = this.lastSettings.customTitle
-                ? titlePosition === "top"
-                    ? `${this.lastSettings.customTitle}\n${phaseText}`
-                    : `${phaseText}\n${this.lastSettings.customTitle}`
-                : phaseText;
-
-            await this.currentAction.setTitle(finalDisplayText);
-            await this.currentAction.setSettings({ ...this.lastSettings, lastUpdate: phaseText });
+            await this.applyPhaseData(this.currentAction, data, this.lastSettings);
         });
 
         this.loadGlobalSettings().then(() => {
@@ -85,34 +72,14 @@ export class PhaseOfDay extends SingletonAction<PhaseSettings> {
         }
     }
 
-    private startUpdateInterval(action: any, settings: PhaseSettings) {
-        this.stopUpdateInterval();
-        
-        const interval = parseInt(settings.updateInterval || DEFAULT_UPDATE_INTERVAL) * 1000;
-        if (isNaN(interval) || interval <= 0) {
-            console.error('Invalid update interval:', settings.updateInterval);
-            return;
-        }
-
-        console.log(`Starting update interval for phase display: ${interval}ms`);
-
+    private startRealtime(action: any, settings: PhaseSettings) {
         this.currentAction = action;
         this.lastSettings = settings;
 
         this.fetchPhase(action, settings);
-        
-        this.updateInterval = setInterval(() => {
-            if (this.currentAction) {
-                this.fetchPhase(this.currentAction, settings);
-            }
-        }, interval);
     }
 
-    private stopUpdateInterval() {
-        if (this.updateInterval) {
-            clearInterval(this.updateInterval);
-            this.updateInterval = null;
-        }
+    private stopRealtime() {
         this.currentAction = null;
     }
 
@@ -125,11 +92,6 @@ export class PhaseOfDay extends SingletonAction<PhaseSettings> {
             newSettings.titlePosition = DEFAULT_TITLE_POSITION;
             settingsChanged = true;
         }
-        if (!currentSettings.updateInterval) {
-            newSettings.updateInterval = DEFAULT_UPDATE_INTERVAL;
-            settingsChanged = true;
-        }
-        
         if (settingsChanged) {
             await ev.action.setSettings(newSettings);
         }
@@ -137,12 +99,12 @@ export class PhaseOfDay extends SingletonAction<PhaseSettings> {
         await this.waitForGlobalSettings();
         
         console.log("Phase display will appear with settings:", newSettings);
-        this.startUpdateInterval(ev.action, newSettings);
+        this.startRealtime(ev.action, newSettings);
     }
 
     override async onWillDisappear(ev: WillDisappearEvent<PhaseSettings>): Promise<void> {
         console.log("Phase display will disappear");
-        this.stopUpdateInterval();
+        this.stopRealtime();
     }
 
     override async onKeyDown(ev: KeyDownEvent<PhaseSettings>): Promise<void> {
@@ -152,7 +114,20 @@ export class PhaseOfDay extends SingletonAction<PhaseSettings> {
 
     override onDidReceiveSettings(ev: DidReceiveSettingsEvent<PhaseSettings>): void {
         console.log("Phase display did receive settings:", ev.payload.settings);
-        this.startUpdateInterval(ev.action, ev.payload.settings);
+        this.startRealtime(ev.action, ev.payload.settings);
+    }
+
+    private async applyPhaseData(action: any, data: TimeResponse, settings: PhaseSettings): Promise<void> {
+        const titlePosition = settings.titlePosition || DEFAULT_TITLE_POSITION;
+        const phaseText = data.timeTillChange === null ? "Wait" : `${data.timeTillChange}\n${data.isDay ? "Night" : "Day"}`;
+        const finalDisplayText = settings.customTitle
+            ? titlePosition === "top"
+                ? `${settings.customTitle}\n${phaseText}`
+                : `${phaseText}\n${settings.customTitle}`
+            : phaseText;
+
+        await action.setTitle(finalDisplayText);
+        await action.setSettings({ ...settings, lastUpdate: phaseText });
     }
 
     private async fetchPhase(action: any, settings: PhaseSettings): Promise<void> {
@@ -160,7 +135,6 @@ export class PhaseOfDay extends SingletonAction<PhaseSettings> {
             const baseUrl = this.globalSettings?.baseUrl?.trim() || 
                            (settings.baseUrl && settings.baseUrl.trim() ? settings.baseUrl.trim() : DEFAULT_BASE_URL);
             
-            const titlePosition = settings.titlePosition || DEFAULT_TITLE_POSITION;
             console.log('Using base URL:', baseUrl);
             
             if (!baseUrl) {
@@ -194,18 +168,7 @@ export class PhaseOfDay extends SingletonAction<PhaseSettings> {
                 try {
                     const data = JSON.parse(text) as TimeResponse;
                     console.log("Parsed time data:", data);
-                    const phaseText = data.timeTillChange === null ? "Wait" : `${data.timeTillChange}\n${data.isDay ? "🌙" : "☀️"}`;
-                    
-                    // Combine custom title with phase text based on position
-                    const finalDisplayText = settings.customTitle 
-                        ? titlePosition === "top"
-                            ? `${settings.customTitle}\n${phaseText}`
-                            : `${phaseText}\n${settings.customTitle}`
-                        : phaseText;
-                    
-                    console.log("Setting title to:", finalDisplayText);
-                    await action.setTitle(finalDisplayText);
-                    await action.setSettings({ ...settings, lastUpdate: phaseText });
+                    await this.applyPhaseData(action, data, settings);
                 } catch (parseError) {
                     console.error("Failed to parse JSON response:", parseError);
                     console.error("Raw response was:", text);
