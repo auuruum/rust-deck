@@ -79,6 +79,38 @@ interface SwitchGroupsResponse {
   switchGroups: SwitchGroupData[];
 }
 
+interface StorageMonitorItem {
+  itemId: number;
+  quantity: number;
+}
+
+interface StorageMonitorData {
+  id: string;
+  name: string;
+  reachable: boolean;
+  location: string;
+  monitorType: string | null;
+  decaying: boolean;
+  upkeep: string | null;
+  everyone: boolean;
+  inGame: boolean;
+  image: string;
+  messageId: string | null;
+  server: string | null;
+  capacity: number;
+  occupiedSlots: number;
+  items: StorageMonitorItem[];
+  expiry: number;
+  hasProtection: boolean;
+  type: 'storagemonitor';
+}
+
+interface StorageMonitorsResponse {
+  total: number;
+  connected: boolean;
+  storageMonitors: StorageMonitorData[];
+}
+
 // TypeScript interfaces for trackers
 interface TrackerPlayerEntry {
   name: string;
@@ -131,9 +163,10 @@ interface GlobalSettings {
   hideSwitches?: boolean;
   hideAlarms?: boolean;
   hideSwitchesGroups?: boolean;
+  hideStorageMonitors?: boolean;
 }
 
-type DeviceData = SwitchData | AlarmData | SwitchGroupData | TrackerPlayerData;
+type DeviceData = SwitchData | AlarmData | SwitchGroupData | StorageMonitorData | TrackerPlayerData;
 
 @action({ UUID: "com.aurum.rust-deck.profile-action" })
 export class ProfileAction extends SingletonAction<JsonObject> {
@@ -372,6 +405,54 @@ export class ProfileAction extends SingletonAction<JsonObject> {
     }
   }
 
+  private async fetchStorageMonitorsData(): Promise<StorageMonitorData[]> {
+    try {
+      const globalSettings: GlobalSettings =
+        await streamDeck.settings.getGlobalSettings();
+      const baseUrl = globalSettings.baseUrl;
+
+      if (!baseUrl) {
+        console.error("Base URL not configured in global settings");
+        return [];
+      }
+
+      const apiUrl = `${baseUrl.replace(/\/$/, "")}/storagemonitors`;
+      console.log(`Fetching storage monitors from: ${apiUrl}`);
+
+      const apiPassword = globalSettings.apiPassword;
+      const headers: HeadersInit = {};
+      if (apiPassword) {
+        headers["X-API-Key"] = apiPassword;
+      }
+
+      const response = await fetch(apiUrl, { headers });
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = (await response.json()) as StorageMonitorsResponse;
+      console.log(`Fetched ${data.storageMonitors.length} storage monitors`);
+
+      if (globalSettings.hideStorageMonitors) {
+        return [];
+      }
+
+      return data.storageMonitors
+        .filter((monitorData) => monitorData.reachable)
+        .map((monitorData) => {
+          const rawMonitor = monitorData as unknown as { type?: string | null };
+          return {
+            ...monitorData,
+            monitorType: monitorData.monitorType ?? rawMonitor.type ?? null,
+            type: 'storagemonitor' as const,
+          };
+        });
+    } catch (error) {
+      console.error("Error fetching storage monitors data:", error);
+      return [];
+    }
+  }
+
   // Cache: key = "steamId_status" → base64 PNG data URL
   private trackerImageCache: Map<string, string> = new Map();
   private trackerImageRequests: Map<string, Promise<string>> = new Map();
@@ -538,18 +619,19 @@ export class ProfileAction extends SingletonAction<JsonObject> {
     } else if (profileType === "trackers") {
       return await this.fetchTrackersData();
     } else if (profileType === "smart_devices") {
-      // Fetch switches, alarms, and switch groups, then combine them
-      const [switches, alarms, switchGroups] = await Promise.all([
+      // Fetch switches, alarms, switch groups, and storage monitors, then combine them
+      const [switches, alarms, switchGroups, storageMonitors] = await Promise.all([
         this.fetchSwitchesData(),
         this.fetchAlarmsData(),
-        this.fetchSwitchGroupsData()
+        this.fetchSwitchGroupsData(),
+        this.fetchStorageMonitorsData()
       ]);
       
       // Combine and sort by type and name for consistent ordering
-      const combinedDevices = [...switches, ...alarms, ...switchGroups];
+      const combinedDevices = [...switches, ...alarms, ...switchGroups, ...storageMonitors];
       combinedDevices.sort((a, b) => {
-        // First sort by type (switches, then alarms, then groups)
-        const typeOrder = { 'switch': 0, 'alarm': 1, 'switchgroup': 2 };
+        // First sort by type (switches, then alarms, then groups, then storage monitors)
+        const typeOrder = { 'switch': 0, 'alarm': 1, 'switchgroup': 2, 'storagemonitor': 3 };
         if (a.type !== b.type) {
           return typeOrder[a.type] - typeOrder[b.type];
         }
@@ -557,7 +639,7 @@ export class ProfileAction extends SingletonAction<JsonObject> {
         return a.name.localeCompare(b.name);
       });
       
-      console.log(`Combined devices: ${switches.length} switches + ${alarms.length} alarms + ${switchGroups.length} groups = ${combinedDevices.length} total`);
+      console.log(`Combined devices: ${switches.length} switches + ${alarms.length} alarms + ${switchGroups.length} groups + ${storageMonitors.length} storage monitors = ${combinedDevices.length} total`);
       return combinedDevices;
     } else {
       return await this.fetchSwitchesData();
@@ -595,6 +677,7 @@ export class ProfileAction extends SingletonAction<JsonObject> {
     const switchResponse = data.switches as SwitchesResponse | undefined;
     const alarmResponse = data.alarms as AlarmsResponse | undefined;
     const groupResponse = data.switchgroups as SwitchGroupsResponse | undefined;
+    const storageMonitorResponse = data.storagemonitors as StorageMonitorsResponse | undefined;
     const trackerResponse = data.trackers as TrackersResponse | undefined;
 
     const switches = switchResponse?.switches
@@ -605,6 +688,16 @@ export class ProfileAction extends SingletonAction<JsonObject> {
       .map((alarmData) => ({ ...alarmData, type: 'alarm' as const }));
     const switchGroups = groupResponse?.switchGroups
       ?.map((groupData) => ({ ...groupData, type: 'switchgroup' as const }));
+    const storageMonitors = storageMonitorResponse?.storageMonitors
+      ?.filter((monitorData) => monitorData.reachable)
+      .map((monitorData) => {
+        const rawMonitor = monitorData as unknown as { type?: string | null };
+        return {
+          ...monitorData,
+          monitorType: monitorData.monitorType ?? rawMonitor.type ?? null,
+          type: 'storagemonitor' as const,
+        };
+      });
 
     if (profileType === "smart_alarms") {
       if (!alarms) return false;
@@ -616,14 +709,15 @@ export class ProfileAction extends SingletonAction<JsonObject> {
       if (!trackerResponse?.trackers) return false;
       this.devicesData = this.flattenTrackers(trackerResponse);
     } else if (profileType === "smart_devices") {
-      if (!switches || !alarms || !switchGroups) return false;
+      if (!switches || !alarms || !switchGroups || !storageMonitors) return false;
       this.devicesData = [
         ...(globalSettings.hideSwitches ? [] : switches),
         ...(globalSettings.hideAlarms ? [] : alarms),
-        ...(globalSettings.hideSwitchesGroups ? [] : switchGroups)
+        ...(globalSettings.hideSwitchesGroups ? [] : switchGroups),
+        ...(globalSettings.hideStorageMonitors ? [] : storageMonitors)
       ];
       this.devicesData.sort((a, b) => {
-        const typeOrder = { 'switch': 0, 'alarm': 1, 'switchgroup': 2, 'tracker': 3 };
+        const typeOrder = { 'switch': 0, 'alarm': 1, 'switchgroup': 2, 'storagemonitor': 3, 'tracker': 4 };
         if (a.type !== b.type) return typeOrder[a.type] - typeOrder[b.type];
         return a.name.localeCompare(b.name);
       });
@@ -764,6 +858,25 @@ export class ProfileAction extends SingletonAction<JsonObject> {
         await action.setImage(iconPath);
         console.log(
           `Set switch button ${buttonIndex} title to: ${title} with icon: ${iconPath}`
+        );
+      } else if (deviceData.type === 'storagemonitor') {
+        const monitorData = deviceData as StorageMonitorData;
+        const deviceTypeLabel = profileType === "smart_devices" ? "[M]" : "";
+        const location = monitorData.location || "";
+        const slotsText = monitorData.capacity > 0
+          ? `${monitorData.occupiedSlots}/${monitorData.capacity} slots`
+          : "No power";
+        const statusText = monitorData.monitorType === "toolCupboard"
+          ? (monitorData.decaying ? "Decaying" : (monitorData.upkeep || "Protected"))
+          : slotsText;
+        const title = `${deviceTypeLabel}\n${monitorData.name}\n${location}\n${statusText}`;
+        await action.setTitle(title);
+        const iconPath = monitorData.capacity > 0
+          ? "imgs/icons/electrics_enabled/" + monitorData.image
+          : "imgs/icons/electrics/" + monitorData.image;
+        await action.setImage(iconPath);
+        console.log(
+          `Set storage monitor button ${buttonIndex} title to: ${title} with icon: ${iconPath}`
         );
       } else if (deviceData.type === 'tracker') {
         const trackerPlayer = deviceData as TrackerPlayerData;
@@ -986,6 +1099,11 @@ export class ProfileAction extends SingletonAction<JsonObject> {
         // Alarms are read-only, so just refresh the data
         console.log(
           `Tapped alarm: ${(deviceData as AlarmData).name} (ID: ${deviceData.id}) - Refreshing`
+        );
+        await this.refreshAll();
+      } else if (deviceData.type === 'storagemonitor') {
+        console.log(
+          `Tapped storage monitor: ${(deviceData as StorageMonitorData).name} (ID: ${deviceData.id}) - Refreshing`
         );
         await this.refreshAll();
       } else if (deviceData.type === 'switchgroup') {

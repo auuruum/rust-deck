@@ -17,6 +17,7 @@ export class SmartDevices extends SingletonAction {
 			hideSwitches: actionSettings.hideSwitches ?? false,
 			hideAlarms: actionSettings.hideAlarms ?? false,
 			hideSwitchesGroups: actionSettings.hideSwitchesGroups ?? false,
+			hideStorageMonitors: actionSettings.hideStorageMonitors ?? false,
 		};
 
 		// Set global settings to pass the configuration to the profile action

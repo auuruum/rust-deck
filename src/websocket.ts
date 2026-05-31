@@ -28,14 +28,14 @@ class WebSocketClient extends EventEmitter {
   private options: ConnectionOptions = {
     url: this.defaultUrl,
     guildId: "default",
-    endpoints: ["server", "time", "pop", "switches", "alarms", "switchgroups", "trackers"],
+    endpoints: ["server", "time", "pop", "switches", "alarms", "switchgroups", "storagemonitors", "trackers"],
     apiPassword: "",
   };
 
   connect(
     url?: string,
     guildId = "default",
-    endpoints: string[] = ["server", "time", "pop", "switches", "alarms", "switchgroups", "trackers"],
+    endpoints: string[] = ["server", "time", "pop", "switches", "alarms", "switchgroups", "storagemonitors", "trackers"],
     apiPassword = "",
   ): void {
     const targetUrl = url?.trim() || this.defaultUrl;
