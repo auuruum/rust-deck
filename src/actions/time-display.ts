@@ -32,6 +32,7 @@ export class TimeDisplay extends SingletonAction<TimeSettings> {
     private globalSettings: GlobalSettings = { baseUrl: DEFAULT_BASE_URL };
     private currentAction: any = null;
     private lastSettings: TimeSettings = {};
+    private realtimeTimer: NodeJS.Timeout | null = null;
 
     constructor() {
         super();
@@ -86,10 +87,22 @@ export class TimeDisplay extends SingletonAction<TimeSettings> {
         this.currentAction = action;
         this.lastSettings = settings;
         this.fetchTime(action, settings);
+        if (this.realtimeTimer) {
+            clearInterval(this.realtimeTimer);
+        }
+        this.realtimeTimer = setInterval(() => {
+            if (this.currentAction) {
+                this.fetchTime(this.currentAction, this.lastSettings);
+            }
+        }, 5000);
     }
 
     private stopRealtime() {
         this.currentAction = null;
+        if (this.realtimeTimer) {
+            clearInterval(this.realtimeTimer);
+            this.realtimeTimer = null;
+        }
     }
 
     override async onWillAppear(ev: WillAppearEvent<TimeSettings>): Promise<void> {
@@ -160,7 +173,9 @@ export class TimeDisplay extends SingletonAction<TimeSettings> {
             : displayText;
 
         await action.setTitle(finalDisplayText, Target.HardwareAndSoftware, titlePosition === "bottom" ? 1 : 0);
-        await action.setSettings({ ...settings, lastUpdate: displayText });
+        if (settings.lastUpdate !== displayText) {
+            await action.setSettings({ ...settings, lastUpdate: displayText });
+        }
     }
 
     private async fetchTime(action: any, settings: TimeSettings): Promise<void> {

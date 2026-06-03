@@ -66,6 +66,7 @@ export class ServerInfo extends SingletonAction {
     private currentAction: Action | null = null;
     private globalSettings: GlobalSettings = { baseUrl: "http://localhost:8074" };
     private lastSettings: ServerInfoSettings | null = null;
+    private realtimeTimer: NodeJS.Timeout | null = null;
 
 
     constructor() {
@@ -141,12 +142,17 @@ export class ServerInfo extends SingletonAction {
         
         console.log("Server Info button appeared with settings:", this.settings);
         
+        this.startRealtime();
         this.updateServerInfo();
     }
 
     override onWillDisappear(ev: WillDisappearEvent) {
         console.log("Server Info button disappeared");
         this.currentAction = null;
+        if (this.realtimeTimer) {
+            clearInterval(this.realtimeTimer);
+            this.realtimeTimer = null;
+        }
     }
 
     override onKeyDown(ev: KeyDownEvent<JsonObject>) {
@@ -222,6 +228,16 @@ export class ServerInfo extends SingletonAction {
                 }
             }
         }
+    }
+
+    private startRealtime(): void {
+        if (this.realtimeTimer) {
+            clearInterval(this.realtimeTimer);
+        }
+
+        this.realtimeTimer = setInterval(() => {
+            this.updateServerInfo();
+        }, 15000);
     }
 
     private async setServerInfoTitle(data: ServerInfoResponse): Promise<void> {

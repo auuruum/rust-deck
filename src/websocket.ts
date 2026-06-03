@@ -41,7 +41,13 @@ class WebSocketClient extends EventEmitter {
     const targetUrl = url?.trim() || this.defaultUrl;
     const nextOptions = { url: targetUrl, guildId, endpoints, apiPassword };
 
-    if (this.ws && this.options.url !== targetUrl) {
+    if (
+      this.ws &&
+      (this.options.url !== targetUrl ||
+        this.options.guildId !== guildId ||
+        this.options.apiPassword !== apiPassword ||
+        this.options.endpoints.join(",") !== endpoints.join(","))
+    ) {
       this.disconnect();
     }
 
@@ -116,8 +122,10 @@ class WebSocketClient extends EventEmitter {
     try {
       const urlObj = new URL(baseUrl || "http://localhost:8074");
       const protocol = urlObj.protocol === "https:" ? "wss:" : "ws:";
-      const wsUrl = `${protocol}//${urlObj.hostname}:${urlObj.port || "8074"}`;
-      const pathGuildId = urlObj.pathname.split("/").filter(Boolean)[0] || guildId;
+      const port = urlObj.port ? `:${urlObj.port}` : "";
+      const path = urlObj.pathname.replace(/\/+$/, "");
+      const wsUrl = `${protocol}//${urlObj.hostname}${port}${path}`;
+      const pathGuildId = urlObj.pathname.split("/").filter(Boolean).find(segment => /^\d{15,25}$/.test(segment)) || guildId;
       this.connect(wsUrl, pathGuildId, this.options.endpoints, apiPassword);
     } catch (error) {
       console.error("Failed to derive WebSocket URL from base URL:", error);
