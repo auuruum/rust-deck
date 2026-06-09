@@ -31,7 +31,6 @@ export class PhaseOfDay extends SingletonAction<PhaseSettings> {
     private globalSettings: GlobalSettings = { baseUrl: DEFAULT_BASE_URL };
     private currentAction: any = null;
     private lastSettings: PhaseSettings = {};
-    private realtimeTimer: NodeJS.Timeout | null = null;
     private lastTimeData: TimeResponse | null = null;
 
     constructor() {
@@ -80,22 +79,10 @@ export class PhaseOfDay extends SingletonAction<PhaseSettings> {
         this.lastSettings = settings;
 
         this.refreshPhase(action, settings);
-        if (this.realtimeTimer) {
-            clearInterval(this.realtimeTimer);
-        }
-        this.realtimeTimer = setInterval(() => {
-            if (this.currentAction) {
-                this.applyLatestWsData(this.currentAction, this.lastSettings);
-            }
-        }, 1000);
     }
 
     private stopRealtime() {
         this.currentAction = null;
-        if (this.realtimeTimer) {
-            clearInterval(this.realtimeTimer);
-            this.realtimeTimer = null;
-        }
     }
 
     override async onWillAppear(ev: WillAppearEvent<PhaseSettings>): Promise<void> {

@@ -33,7 +33,6 @@ export class TimeDisplay extends SingletonAction<TimeSettings> {
     private globalSettings: GlobalSettings = { baseUrl: DEFAULT_BASE_URL };
     private currentAction: any = null;
     private lastSettings: TimeSettings = {};
-    private realtimeTimer: NodeJS.Timeout | null = null;
     private lastTimeData: TimeResponse | null = null;
 
     constructor() {
@@ -86,22 +85,10 @@ export class TimeDisplay extends SingletonAction<TimeSettings> {
         this.currentAction = action;
         this.lastSettings = settings;
         this.refreshTime(action, settings);
-        if (this.realtimeTimer) {
-            clearInterval(this.realtimeTimer);
-        }
-        this.realtimeTimer = setInterval(() => {
-            if (this.currentAction) {
-                this.applyLatestWsData(this.currentAction, this.lastSettings);
-            }
-        }, 1000);
     }
 
     private stopRealtime() {
         this.currentAction = null;
-        if (this.realtimeTimer) {
-            clearInterval(this.realtimeTimer);
-            this.realtimeTimer = null;
-        }
     }
 
     override async onWillAppear(ev: WillAppearEvent<TimeSettings>): Promise<void> {
