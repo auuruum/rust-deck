@@ -177,7 +177,12 @@ export class ProfileAction extends SingletonAction<JsonObject> {
       wsClient.on("update", async (data: Record<string, unknown>) => {
         try {
           if (!(await this.applyBridgeUpdate(data))) {
-            await this.refreshAll(true);
+            const globalSettings: GlobalSettings =
+              await streamDeck.settings.getGlobalSettings();
+            const profileType = globalSettings.profileType || "smart_switches";
+            if (profileType !== "trackers") {
+              await this.refreshAll(true);
+            }
           }
         } catch (err) {
           console.error("Failed to refresh after WS update", err);
@@ -561,45 +566,19 @@ export class ProfileAction extends SingletonAction<JsonObject> {
     }
   }
 
-  /**
-   * Fetches trackers data and flattens to per-player entries.
-   * Uses baseUrl directly: {baseUrl}/trackers
-   */
   private async fetchTrackersData(): Promise<TrackerPlayerData[]> {
     try {
-      const globalSettings: GlobalSettings =
-        await streamDeck.settings.getGlobalSettings();
-      const baseUrl = globalSettings.baseUrl;
-
-      if (!baseUrl) {
-        console.error("Base URL not configured in global settings");
+      const { wsClient } = await import("../websocket");
+      const data = wsClient.getLatestData();
+      const trackerResponse = data.trackers as TrackersResponse | undefined;
+      if (!trackerResponse?.trackers) {
+        console.log("Waiting for trackers data from WebSocket");
         return [];
       }
 
-      const apiUrl = `${baseUrl.replace(/\/$/, "")}/trackers`;
-      console.log(`Fetching trackers from: ${apiUrl}`);
-
-      const apiPassword = globalSettings.apiPassword;
-      const headers: HeadersInit = {};
-      if (apiPassword) {
-        headers["X-API-Key"] = apiPassword;
-      }
-
-      const response = await fetch(apiUrl, { headers });
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = (await response.json()) as TrackersResponse;
-      console.log(`Fetched ${data.trackers.length} trackers`);
-
-      // Flatten trackers → players into individual button entries
-      const playerEntries = this.flattenTrackers(data);
-
-      console.log(`Flattened to ${playerEntries.length} tracker player entries`);
-      return playerEntries;
+      return this.flattenTrackers(trackerResponse);
     } catch (error) {
-      console.error("Error fetching trackers data:", error);
+      console.error("Error loading trackers data from WebSocket:", error);
       return [];
     }
   }

@@ -25,6 +25,7 @@ class WebSocketClient extends EventEmitter {
   private readonly defaultUrl = "ws://localhost:8074";
   private connected = false;
   private subscribed = false;
+  private latestData: Record<string, unknown> = {};
   private options: ConnectionOptions = {
     url: this.defaultUrl,
     guildId: "default",
@@ -97,6 +98,11 @@ class WebSocketClient extends EventEmitter {
         return;
       }
 
+      this.latestData = {
+        ...this.latestData,
+        ...(payload.data || {}),
+      };
+
       for (const key of Object.keys(payload.data || {})) {
         this.emit(key, (payload.data as Record<string, unknown>)[key]);
       }
@@ -142,6 +148,10 @@ class WebSocketClient extends EventEmitter {
       this.ws.close();
       this.ws = null;
     }
+  }
+
+  getLatestData(): Record<string, unknown> {
+    return { ...this.latestData };
   }
 
   private scheduleReconnect(): void {
