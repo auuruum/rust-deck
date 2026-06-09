@@ -91,7 +91,7 @@
 		{
 			"Name": "Trackers",
 			"UUID": "com.aurum.rust-deck.trackers",
-			"Icon": "imgs/actions/smart_devices/icon",
+			"Icon": "imgs/actions/trackers/icon",
 			"Tooltip": "Shows player trackers. Opens the tracker profile on press.",
 			"PropertyInspectorPath": "ui/trackers.html",
 			"Controllers": [
@@ -99,7 +99,7 @@
 			],
 			"States": [
 				{
-					"Image": "imgs/actions/smart_devices/key",
+					"Image": "imgs/actions/trackers/key",
 					"TitleAlignment": "middle",
 					"Title": "Trackers"
 				}
