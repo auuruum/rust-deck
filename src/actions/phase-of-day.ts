@@ -14,7 +14,7 @@ interface TimeResponse {
     currentTime: number;
     currentTimeFormatted: string;
     isDay: boolean;
-    timeTillChange: string;
+    timeTillChange: string | null;
     sunrise: number;
     sunriseFormatted: string;
     sunset: number;
@@ -32,11 +32,13 @@ export class PhaseOfDay extends SingletonAction<PhaseSettings> {
     private currentAction: any = null;
     private lastSettings: PhaseSettings = {};
     private realtimeTimer: NodeJS.Timeout | null = null;
+    private lastTimeData: TimeResponse | null = null;
 
     constructor() {
         super();
         wsClient.on("time", async (data: TimeResponse) => {
             if (!this.currentAction || !data || typeof data.isDay !== "boolean") return;
+            this.lastTimeData = data;
             await this.applyPhaseData(this.currentAction, data, this.lastSettings);
         });
 
@@ -48,7 +50,7 @@ export class PhaseOfDay extends SingletonAction<PhaseSettings> {
             this.globalSettings = settings as GlobalSettings;
             console.log('Global settings updated:', this.globalSettings);
             if (this.currentAction) {
-                this.fetchPhase(this.currentAction, this.lastSettings);
+                this.refreshPhase(this.currentAction, this.lastSettings);
             }
         });
     }
@@ -77,15 +79,15 @@ export class PhaseOfDay extends SingletonAction<PhaseSettings> {
         this.currentAction = action;
         this.lastSettings = settings;
 
-        this.fetchPhase(action, settings);
+        this.refreshPhase(action, settings);
         if (this.realtimeTimer) {
             clearInterval(this.realtimeTimer);
         }
         this.realtimeTimer = setInterval(() => {
             if (this.currentAction) {
-                this.fetchPhase(this.currentAction, this.lastSettings);
+                this.applyLatestWsData(this.currentAction, this.lastSettings);
             }
-        }, 5000);
+        }, 1000);
     }
 
     private stopRealtime() {
@@ -122,12 +124,29 @@ export class PhaseOfDay extends SingletonAction<PhaseSettings> {
 
     override async onKeyDown(ev: KeyDownEvent<PhaseSettings>): Promise<void> {
         console.log("Phase display key down with settings:", ev.payload.settings);
-        await this.fetchPhase(ev.action, ev.payload.settings);
+        await this.refreshPhase(ev.action, ev.payload.settings);
     }
 
     override onDidReceiveSettings(ev: DidReceiveSettingsEvent<PhaseSettings>): void {
         console.log("Phase display did receive settings:", ev.payload.settings);
         this.startRealtime(ev.action, ev.payload.settings);
+    }
+
+    private async refreshPhase(action: any, settings: PhaseSettings): Promise<void> {
+        if (await this.applyLatestWsData(action, settings)) return;
+        await this.fetchPhase(action, settings);
+    }
+
+    private async applyLatestWsData(action: any, settings: PhaseSettings): Promise<boolean> {
+        const latest = wsClient.getLatestData().time as TimeResponse | undefined;
+        const data = latest || this.lastTimeData;
+        if (!data || typeof data.isDay !== "boolean") {
+            return false;
+        }
+
+        this.lastTimeData = data;
+        await this.applyPhaseData(action, data, settings);
+        return true;
     }
 
     private async applyPhaseData(action: any, data: TimeResponse, settings: PhaseSettings): Promise<void> {

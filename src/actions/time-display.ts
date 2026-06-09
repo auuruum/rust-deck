@@ -1,5 +1,6 @@
 import { action, KeyDownEvent, SingletonAction, WillAppearEvent, DidReceiveSettingsEvent, Target, streamDeck, WillDisappearEvent } from "@elgato/streamdeck";
 import { GlobalSettings } from "../settings";
+import { wsClient } from "../websocket";
 
 interface TimeSettings {
     baseUrl?: string;
@@ -14,7 +15,7 @@ interface TimeResponse {
     currentTime: number;
     currentTimeFormatted: string;
     isDay: boolean;
-    timeTillChange: string;
+    timeTillChange: string | null;
     sunrise: number;
     sunriseFormatted: string;
     sunset: number;
@@ -33,18 +34,16 @@ export class TimeDisplay extends SingletonAction<TimeSettings> {
     private currentAction: any = null;
     private lastSettings: TimeSettings = {};
     private realtimeTimer: NodeJS.Timeout | null = null;
+    private lastTimeData: TimeResponse | null = null;
 
     constructor() {
         super();
-        // Listen for WebSocket time updates
-        import("../websocket").then(({ wsClient }) => {
-            wsClient.on("time", (data: any) => {
-                if (this.currentAction && data && typeof data.currentTimeFormatted === "string") {
-                    this.applyTimeData(this.currentAction, data as TimeResponse, this.lastSettings);
-                }
-            });
-        }).catch(err => {
-            console.error("Failed to attach WS listener in TimeDisplay", err);
+        wsClient.on("time", (data: TimeResponse) => {
+            if (!data || typeof data.currentTimeFormatted !== "string") return;
+            this.lastTimeData = data;
+            if (this.currentAction) {
+                this.applyTimeData(this.currentAction, data, this.lastSettings);
+            }
         });
 
         // Load global settings when the plugin starts
@@ -58,7 +57,7 @@ export class TimeDisplay extends SingletonAction<TimeSettings> {
             console.log('Global settings updated:', this.globalSettings);
             // Refresh display when global settings change
             if (this.currentAction) {
-                this.fetchTime(this.currentAction, this.lastSettings);
+                this.refreshTime(this.currentAction, this.lastSettings);
             }
         });
     }
@@ -86,15 +85,15 @@ export class TimeDisplay extends SingletonAction<TimeSettings> {
     private startRealtime(action: any, settings: TimeSettings) {
         this.currentAction = action;
         this.lastSettings = settings;
-        this.fetchTime(action, settings);
+        this.refreshTime(action, settings);
         if (this.realtimeTimer) {
             clearInterval(this.realtimeTimer);
         }
         this.realtimeTimer = setInterval(() => {
             if (this.currentAction) {
-                this.fetchTime(this.currentAction, this.lastSettings);
+                this.applyLatestWsData(this.currentAction, this.lastSettings);
             }
-        }, 5000);
+        }, 1000);
     }
 
     private stopRealtime() {
@@ -136,12 +135,29 @@ export class TimeDisplay extends SingletonAction<TimeSettings> {
 
     override async onKeyDown(ev: KeyDownEvent<TimeSettings>): Promise<void> {
         console.log("Time display key down with settings:", ev.payload.settings);
-        await this.fetchTime(ev.action, ev.payload.settings);
+        await this.refreshTime(ev.action, ev.payload.settings);
     }
 
     override onDidReceiveSettings(ev: DidReceiveSettingsEvent<TimeSettings>): void {
         console.log("Time display did receive settings:", ev.payload.settings);
         this.startRealtime(ev.action, ev.payload.settings);
+    }
+
+    private async refreshTime(action: any, settings: TimeSettings): Promise<void> {
+        if (await this.applyLatestWsData(action, settings)) return;
+        await this.fetchTime(action, settings);
+    }
+
+    private async applyLatestWsData(action: any, settings: TimeSettings): Promise<boolean> {
+        const latest = wsClient.getLatestData().time as TimeResponse | undefined;
+        const data = latest || this.lastTimeData;
+        if (!data || typeof data.currentTimeFormatted !== "string") {
+            return false;
+        }
+
+        this.lastTimeData = data;
+        await this.applyTimeData(action, data, settings);
+        return true;
     }
 
     private async applyTimeData(action: any, data: TimeResponse, settings: TimeSettings): Promise<void> {

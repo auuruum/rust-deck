@@ -89,7 +89,7 @@ export class JoinServer extends SingletonAction {
       this.globalSettings = settings as GlobalSettings;
       console.log("Global settings updated:", this.globalSettings);
       // Refresh display when global settings change
-      this.updateServerInfo();
+      this.refreshServerInfo();
     });
   }
 
@@ -283,7 +283,7 @@ export class JoinServer extends SingletonAction {
 
     console.log("Join Server button appeared with settings:", this.settings);
 
-    this.updateServerInfo();
+    this.refreshServerInfo();
   }
 
   override onWillDisappear(ev: WillDisappearEvent) {
@@ -324,7 +324,7 @@ export class JoinServer extends SingletonAction {
     }
 
     // Optional: Refresh data on button press
-    this.updateServerInfo();
+    this.refreshServerInfo();
   }
 
   override onDidReceiveSettings(
@@ -333,7 +333,23 @@ export class JoinServer extends SingletonAction {
     console.log("Settings received:", ev.payload.settings);
     this.settings = ev.payload.settings;
     this.lastSettings = ev.payload.settings;
-    this.updateServerInfo();
+    this.refreshServerInfo();
+  }
+
+  private async refreshServerInfo() {
+    if (await this.applyLatestWsData()) return;
+    await this.updateServerInfo();
+  }
+
+  private async applyLatestWsData(): Promise<boolean> {
+    if (!this.currentAction) return false;
+    const latest = wsClient.getLatestData().server as ServerResponse | undefined;
+    const data = latest || this.serverData;
+    if (!data?.server?.title) return false;
+
+    this.serverData = data;
+    await (this.currentAction as any).setTitle(this.processServerTitle(data.server.title));
+    return true;
   }
 
   private async updateServerInfo() {

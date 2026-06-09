@@ -12,6 +12,7 @@ import {
 import type { JsonObject } from "@elgato/streamdeck";
 import { PNG } from "pngjs";
 import jpegJs from "jpeg-js";
+import { wsClient } from "../websocket";
 
 // TypeScript interfaces for switches
 interface SwitchData {
@@ -172,24 +173,23 @@ type DeviceData = SwitchData | AlarmData | SwitchGroupData | StorageMonitorData 
 export class ProfileAction extends SingletonAction<JsonObject> {
   constructor() {
     super();
-    // Attach WebSocket update listener to refresh devices data instantly
-    import("../websocket").then(({ wsClient }) => {
-      wsClient.on("update", async (data: Record<string, unknown>) => {
-        try {
-          if (!(await this.applyBridgeUpdate(data))) {
-            const globalSettings: GlobalSettings =
-              await streamDeck.settings.getGlobalSettings();
-            const profileType = globalSettings.profileType || "smart_switches";
-            if (profileType !== "trackers") {
-              await this.refreshAll(true);
-            }
+    wsClient.on("update", async (data: Record<string, unknown>) => {
+      try {
+        const hasProfileData = ["switches", "alarms", "switchgroups", "storagemonitors", "trackers"]
+          .some(key => Object.prototype.hasOwnProperty.call(data, key));
+        if (!hasProfileData) return;
+
+        if (!(await this.applyBridgeUpdate(data))) {
+          const globalSettings: GlobalSettings =
+            await streamDeck.settings.getGlobalSettings();
+          const profileType = globalSettings.profileType || "smart_switches";
+          if (profileType !== "trackers") {
+            await this.refreshAll(true);
           }
-        } catch (err) {
-          console.error("Failed to refresh after WS update", err);
         }
-      });
-    }).catch(err => {
-      console.error("ProfileAction WebSocket listener error", err);
+      } catch (err) {
+        console.error("Failed to refresh after WS update", err);
+      }
     });
   }
   private devicesData: DeviceData[] = [];
@@ -261,6 +261,14 @@ export class ProfileAction extends SingletonAction<JsonObject> {
       const globalSettings: GlobalSettings =
         await streamDeck.settings.getGlobalSettings();
       const baseUrl = globalSettings.baseUrl;
+      const hideSwitches = globalSettings.hideSwitches ?? false;
+      const latest = wsClient.getLatestData().switches as SwitchesResponse | undefined;
+      if (latest?.switches) {
+        if (hideSwitches && !includeHidden) return [];
+        return latest.switches
+          .filter((switchData) => switchData.reachable)
+          .map((switchData) => ({ ...switchData, type: 'switch' as const }));
+      }
 
       if (!baseUrl) {
         console.error("Base URL not configured in global settings");
@@ -289,7 +297,6 @@ export class ProfileAction extends SingletonAction<JsonObject> {
       console.log(`Fetched ${data.switches.length} switches`);
 
       // Filter out hidden switches if specified in global settings
-      const hideSwitches = globalSettings.hideSwitches ?? false;
       if (hideSwitches && !includeHidden) {
          return []; // Return empty if switches are hidden
        }
@@ -314,6 +321,14 @@ export class ProfileAction extends SingletonAction<JsonObject> {
       const globalSettings: GlobalSettings =
         await streamDeck.settings.getGlobalSettings();
       const baseUrl = globalSettings.baseUrl;
+      const hideAlarms = globalSettings.hideAlarms ?? false;
+      const latest = wsClient.getLatestData().alarms as AlarmsResponse | undefined;
+      if (latest?.alarms) {
+        if (hideAlarms) return [];
+        return latest.alarms
+          .filter((alarmData) => alarmData.reachable)
+          .map((alarmData) => ({ ...alarmData, type: 'alarm' as const }));
+      }
 
       if (!baseUrl) {
         console.error("Base URL not configured in global settings");
@@ -342,7 +357,6 @@ export class ProfileAction extends SingletonAction<JsonObject> {
       console.log(`Fetched ${data.alarms.length} alarms`);
 
       // Filter out hidden alarms if specified in global settings
-      const hideAlarms = globalSettings.hideAlarms ?? false;
       if (hideAlarms) {
         return []; // Return empty if alarms are hidden
       }
@@ -367,6 +381,13 @@ export class ProfileAction extends SingletonAction<JsonObject> {
       const globalSettings: GlobalSettings =
         await streamDeck.settings.getGlobalSettings();
       const baseUrl = globalSettings.baseUrl;
+      const hideSwitchesGroups = globalSettings.hideSwitchesGroups ?? false;
+      const latest = wsClient.getLatestData().switchgroups as SwitchGroupsResponse | undefined;
+      if (latest?.switchGroups) {
+        if (hideSwitchesGroups) return [];
+        return latest.switchGroups
+          .map((groupData) => ({ ...groupData, type: 'switchgroup' as const }));
+      }
 
       if (!baseUrl) {
         console.error("Base URL not configured in global settings");
@@ -395,7 +416,6 @@ export class ProfileAction extends SingletonAction<JsonObject> {
       console.log(`Fetched ${data.switchGroups.length} switch groups`);
 
       // Filter out hidden switch groups if specified in global settings
-      const hideSwitchesGroups = globalSettings.hideSwitchesGroups ?? false;
       if (hideSwitchesGroups) {
         return []; // Return empty if switch groups are hidden
       }
@@ -415,6 +435,20 @@ export class ProfileAction extends SingletonAction<JsonObject> {
       const globalSettings: GlobalSettings =
         await streamDeck.settings.getGlobalSettings();
       const baseUrl = globalSettings.baseUrl;
+      const latest = wsClient.getLatestData().storagemonitors as StorageMonitorsResponse | undefined;
+      if (latest?.storageMonitors) {
+        if (globalSettings.hideStorageMonitors) return [];
+        return latest.storageMonitors
+          .filter((monitorData) => monitorData.reachable)
+          .map((monitorData) => {
+            const rawMonitor = monitorData as unknown as { type?: string | null };
+            return {
+              ...monitorData,
+              monitorType: monitorData.monitorType ?? rawMonitor.type ?? null,
+              type: 'storagemonitor' as const,
+            };
+          });
+      }
 
       if (!baseUrl) {
         console.error("Base URL not configured in global settings");
@@ -568,7 +602,6 @@ export class ProfileAction extends SingletonAction<JsonObject> {
 
   private async fetchTrackersData(): Promise<TrackerPlayerData[]> {
     try {
-      const { wsClient } = await import("../websocket");
       const data = wsClient.getLatestData();
       const trackerResponse = data.trackers as TrackersResponse | undefined;
       if (!trackerResponse?.trackers) {
@@ -1111,6 +1144,7 @@ export class ProfileAction extends SingletonAction<JsonObject> {
       const globalSettings: GlobalSettings =
         await streamDeck.settings.getGlobalSettings();
       const baseUrl = globalSettings.baseUrl;
+      const hasWsSwitchData = Boolean((wsClient.getLatestData().switches as SwitchesResponse | undefined)?.switches);
 
       if (!baseUrl) {
         console.error("Base URL not configured");
@@ -1145,10 +1179,11 @@ export class ProfileAction extends SingletonAction<JsonObject> {
 
       console.log(`Successfully toggled switch ${switchId}`);
 
-      // Allow backend to process toggle before refreshing to prevent immediate flicker
-      await new Promise(resolve => setTimeout(resolve, 300));
-      this.devicesData = await this.fetchDevicesData();
-      await this.updateAllButtons();
+      if (!hasWsSwitchData) {
+        await new Promise(resolve => setTimeout(resolve, 300));
+        this.devicesData = await this.fetchDevicesData();
+        await this.updateAllButtons();
+      }
       this.isToggling = false;
     } catch (error) {
       // Revert optimistic update if remote toggle fails
@@ -1171,6 +1206,7 @@ export class ProfileAction extends SingletonAction<JsonObject> {
       const globalSettings: GlobalSettings =
         await streamDeck.settings.getGlobalSettings();
       const baseUrl = globalSettings.baseUrl;
+      const hasWsGroupData = Boolean((wsClient.getLatestData().switchgroups as SwitchGroupsResponse | undefined)?.switchGroups);
 
       if (!baseUrl) {
         console.error("Base URL not configured");
@@ -1197,10 +1233,11 @@ export class ProfileAction extends SingletonAction<JsonObject> {
 
       console.log(`Successfully turned switch group ${groupId} ${action}`);
 
-      // Allow backend to process the group action before refreshing
-      await new Promise(resolve => setTimeout(resolve, 500));
-      this.devicesData = await this.fetchDevicesData();
-      await this.updateAllButtons();
+      if (!hasWsGroupData) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        this.devicesData = await this.fetchDevicesData();
+        await this.updateAllButtons();
+      }
       this.isToggling = false;
     } catch (error) {
       console.error(`Error controlling switch group ${groupId}:`, error);

@@ -41,15 +41,18 @@ class WebSocketClient extends EventEmitter {
   ): void {
     const targetUrl = url?.trim() || this.defaultUrl;
     const nextOptions = { url: targetUrl, guildId, endpoints, apiPassword };
+    const optionsChanged =
+      this.options.url !== targetUrl ||
+      this.options.guildId !== guildId ||
+      this.options.apiPassword !== apiPassword ||
+      this.options.endpoints.join(",") !== endpoints.join(",");
 
-    if (
-      this.ws &&
-      (this.options.url !== targetUrl ||
-        this.options.guildId !== guildId ||
-        this.options.apiPassword !== apiPassword ||
-        this.options.endpoints.join(",") !== endpoints.join(","))
-    ) {
+    if (this.ws && optionsChanged) {
       this.disconnect();
+    }
+
+    if (optionsChanged) {
+      this.latestData = {};
     }
 
     this.options = nextOptions;

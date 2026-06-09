@@ -66,7 +66,7 @@ export class ServerInfo extends SingletonAction {
     private currentAction: Action | null = null;
     private globalSettings: GlobalSettings = { baseUrl: "http://localhost:8074" };
     private lastSettings: ServerInfoSettings | null = null;
-    private realtimeTimer: NodeJS.Timeout | null = null;
+    private lastServerInfo: ServerInfoResponse | null = null;
 
 
     constructor() {
@@ -74,6 +74,7 @@ export class ServerInfo extends SingletonAction {
         wsClient.on("pop", async (data: ServerInfoResponse) => {
             if (!this.currentAction || !data) return;
             try {
+                this.lastServerInfo = data;
                 await this.setServerInfoTitle(data);
             } catch (error) {
                 console.error("Failed to apply WebSocket server info:", error);
@@ -90,7 +91,7 @@ export class ServerInfo extends SingletonAction {
             this.globalSettings = settings as GlobalSettings;
             console.log('Global settings updated:', this.globalSettings);
             // Refresh display when global settings change
-            this.updateServerInfo();
+            this.refreshServerInfo();
         });
     }
 
@@ -142,30 +143,25 @@ export class ServerInfo extends SingletonAction {
         
         console.log("Server Info button appeared with settings:", this.settings);
         
-        this.startRealtime();
-        this.updateServerInfo();
+        this.refreshServerInfo();
     }
 
     override onWillDisappear(ev: WillDisappearEvent) {
         console.log("Server Info button disappeared");
         this.currentAction = null;
-        if (this.realtimeTimer) {
-            clearInterval(this.realtimeTimer);
-            this.realtimeTimer = null;
-        }
     }
 
     override onKeyDown(ev: KeyDownEvent<JsonObject>) {
         console.log("Server Info button pressed, updating immediately...");
         // Refresh data on button press
-        this.updateServerInfo();
+        this.refreshServerInfo();
     }
 
     override onDidReceiveSettings(ev: DidReceiveSettingsEvent<ServerInfoSettings>) {
         console.log("Settings received:", ev.payload.settings);
         this.settings = ev.payload.settings;
         this.lastSettings = ev.payload.settings;
-        this.updateServerInfo();
+        this.refreshServerInfo();
     }
 
     private getServerUrl(): string {
@@ -177,6 +173,24 @@ export class ServerInfo extends SingletonAction {
             : `/${this.settings.serverPath}`;
         // Combine base URL and server path, ensuring there's exactly one slash between them
         return `${baseUrl}${serverPath}`;
+    }
+
+    private async refreshServerInfo() {
+        if (await this.applyLatestWsData()) return;
+        await this.updateServerInfo();
+    }
+
+    private async applyLatestWsData(): Promise<boolean> {
+        if (!this.currentAction) return false;
+        const latest = wsClient.getLatestData().pop as ServerInfoResponse | undefined;
+        const data = latest || this.lastServerInfo;
+        if (!data || !("currentPlayers" in data) || !("maxPlayers" in data) || !("queuedPlayers" in data)) {
+            return false;
+        }
+
+        this.lastServerInfo = data;
+        await this.setServerInfoTitle(data);
+        return true;
     }
 
     private async updateServerInfo() {
@@ -217,6 +231,7 @@ export class ServerInfo extends SingletonAction {
             }
 
             console.log(`Server info received: ${data.currentPlayers}/${data.maxPlayers} players, queue: ${data.queuedPlayers}`);
+            this.lastServerInfo = data;
             await this.setServerInfoTitle(data);
         } catch (error) {
             console.error('Error updating server info:', error);
@@ -228,16 +243,6 @@ export class ServerInfo extends SingletonAction {
                 }
             }
         }
-    }
-
-    private startRealtime(): void {
-        if (this.realtimeTimer) {
-            clearInterval(this.realtimeTimer);
-        }
-
-        this.realtimeTimer = setInterval(() => {
-            this.updateServerInfo();
-        }, 15000);
     }
 
     private async setServerInfoTitle(data: ServerInfoResponse): Promise<void> {
